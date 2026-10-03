@@ -1,5 +1,7 @@
 import { z } from 'zod';
 
+export * from './boards';
+
 export const liveResponseSchema = z.strictObject({ status: z.literal('ok') });
 const checkStatusSchema = z.enum(['ok', 'down']);
 export const readyResponseSchema = z

@@ -22,10 +22,12 @@ A shared mood board that turns inspiration into an agreed plan. Planners and des
 | [docs/11-project-structure.md](docs/11-project-structure.md) | Monorepo folders and dependency boundaries |
 | [docs/12-backend-foundation.md](docs/12-backend-foundation.md) | Backend foundation and test gates |
 | [docs/13-backend-accounts-workspaces.md](docs/13-backend-accounts-workspaces.md) | Accounts, cookie sessions, Google login, and workspaces |
+| [docs/14-backend-board-core.md](docs/14-backend-board-core.md) | Blank boards, sections, notes, permissions, and atomic event writes |
 
 ## Local development
 
-Use Node.js 24 and pnpm 10.33.0. The backend includes account authentication, workspace onboarding, and shared
+Use Node.js 24 and pnpm 10.33.0. The backend includes account authentication,
+workspace onboarding, blank canvas boards, sections, and note items, with shared
 database and contract packages. The worker and web app do not have code yet.
 
 Start Docker. Then run these commands from the project root:
@@ -103,7 +105,26 @@ Run `pnpm test:unit`, `pnpm test:integration`, or `pnpm test:e2e` for one test g
 Database test groups run in sequence. Do not run them against the same database
 at the same time. CI uses separate Postgres 15 and Redis 7 services and runs `pnpm check`.
 
-See [the work unit and its test gates](docs/12-backend-foundation.md).
+See [foundation test gates](docs/12-backend-foundation.md) and
+[board core contracts and concurrency tests](docs/14-backend-board-core.md).
+
+## Board core
+
+Use the session cookie from signup or login to create a board in one of your
+workspaces. `POST /boards` accepts `workspaceId` and `title`. `GET /boards` lists
+accessible boards with an existing participant identity; the workspace board
+list also discovers boards available through workspace access or business
+ownership. `GET /boards/:id` returns metadata, sections, and your effective role.
+
+Create notes through `POST /boards/:id/items` with a client-generated UUID,
+`kind: "note"`, and an alphanumeric `zOrder`. Content edits require the current
+`version`; position edits use `/items/:id/position` without a version. Mutations
+and their events commit together. Same-board item retries return the original
+item, including deleted tombstones, without another event. See
+[work unit 3](docs/14-backend-board-core.md) for all routes and limits.
+
+Only blank boards and notes are implemented. Clients, starter kits, media,
+sharing controls, board archiving, plan limits, workers, and realtime follow.
 
 ## Code style
 

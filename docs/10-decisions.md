@@ -14,6 +14,18 @@ Each entry states the decision and the reason. Add a new entry when a choice clo
 
 ## Architecture
 
+**D46. Discover an account's joined boards through `GET /boards`.** This returns
+boards with an existing account participant identity that still resolves access.
+The membership-filtered workspace list also discovers boards reachable through
+workspace defaults and business-owner recovery. This replaces the previously
+specified `/me/boards` route before any board API clients exist.
+
+**D47. Board core events carry typed metadata, not note content or prices.**
+Identifiers, content versions, and changed field names describe the mutation.
+Future handlers load current state; future client delivery must apply role-based
+serialization. Storing raw private note text or monetary amounts is unnecessary
+for the initial outbox.
+
 **D44. Use Postgres-backed opaque cookie sessions for account authentication.**
 Routes are private by default through one global Nest guard, with explicit public
 metadata for health and auth entrypoints. Seven-day sessions are checked against

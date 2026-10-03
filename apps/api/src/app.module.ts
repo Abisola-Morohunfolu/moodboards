@@ -4,6 +4,8 @@ import { ConfigModule } from '@nestjs/config';
 import { validateEnvironment } from './config';
 import { AuthModule } from './features/auth/auth.module';
 import { HealthModule } from './features/health/health.module';
+import { BoardsModule } from './features/boards/boards.module';
+import { ItemsModule } from './features/items/items.module';
 import { DatabaseModule } from './database/database.module';
 
 @Module({})
@@ -23,6 +25,8 @@ export class AppModule {
         DatabaseModule,
         HealthModule,
         AuthModule,
+        BoardsModule,
+        ItemsModule,
       ],
     };
   }

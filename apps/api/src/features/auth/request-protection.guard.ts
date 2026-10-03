@@ -18,7 +18,7 @@ export class RequestProtectionGuard implements CanActivate {
     if (origin && !this.config.get('AUTH_ALLOWED_ORIGINS', { infer: true }).includes(origin)) {
       throw new ForbiddenException('Origin not allowed');
     }
-    if (request.method === 'POST' && !request.is('application/json')) {
+    if (['POST', 'PATCH', 'PUT'].includes(request.method) && !request.is('application/json')) {
       throw new BadRequestException('Content-Type must be application/json');
     }
     return true;

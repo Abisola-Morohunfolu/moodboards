@@ -16,7 +16,10 @@ Each value is `ok` or `down`. A request has a two-second deadline. Responses do
 not include connection details or database errors. These checks only read data.
 
 Account signup/login/logout, `/me`, and workspace creation/listing exist in
-backend work unit 2. Other product routes remain specifications.
+backend work unit 2. Backend work unit 3 implements blank board creation/listing,
+board metadata reads/updates, sections, and note CRUD/position routes. See
+[board core](14-backend-board-core.md) for its supported fields, responses,
+retry rules, and deferred behavior. Other product routes remain specifications.
 
 The global session guard makes routes private by default; `@Public()` explicitly
 opens health and auth entry routes. Public auth routes still enforce JSON bodies,
@@ -70,7 +73,7 @@ contracts, cookie policy, Google setup, and failure behavior.
 | Method | Path | Needs | Notes |
 |--------|------|-------|-------|
 | GET | `/workspaces/:id/boards` | workspace member | Only boards the caller resolves a role on |
-| GET | `/me/boards` | signed in | Every board where the caller has a participant row and `resolveBoardRole` gives them a role, across workspaces. Finds boards joined by a board-only invite or a share link, and leaves out boards they can no longer open |
+| GET | `/boards` | signed in | Every board where the caller has a participant row and the role resolver gives them a role, across workspaces. Implemented for account sessions; invite and share-link entry paths follow later |
 | POST | `/boards` | member of `workspaceId` | `workspaceId`, `title`, optional `kitId`, `sourceBoardId`, `itemIds`. Copied items follow the price rule of `/items/:id/copy` |
 | GET | `/boards/:id` | `board.view` | Board, sections, modules, caller's role |
 | PATCH | `/boards/:id` | `board.share` | Title, layout, currency |
@@ -86,6 +89,11 @@ contracts, cookie policy, Google setup, and failure behavior.
 | GET | `/boards/:id/events?after=:seq` | `board.view` | Events with `board_seq` above the client's last applied seq, redacted for the role. Hidden events come back as `redacted` placeholders, so the range has no gaps. 410 when any seq in the range has been deleted |
 
 ## Sections and items
+
+Work unit 3 implements the section routes and note creation, listing, content
+editing, movement, and soft deletion. Creation retries return 200 with the
+existing same-board note, including a deleted tombstone; first creation returns
+201. Media, copying, and export endpoints below remain planned.
 
 | Method | Path | Needs | Notes |
 |--------|------|-------|-------|
