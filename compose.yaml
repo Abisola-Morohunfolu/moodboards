@@ -11,13 +11,12 @@ services:
       POSTGRES_USER: ${POSTGRES_USER:-moodboard}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-moodboard}
     ports:
-      - "${POSTGRES_PORT:-5432}:5432"
+      - '${POSTGRES_PORT:-5432}:5432'
     volumes:
-      - postgres-data:/var/lib/postgresql/data
-      # Runs only when the volume is empty. After a schema change: docker compose down -v
-      - ./db/schema.sql:/docker-entrypoint-initdb.d/01-schema.sql:ro
+      # Migrations create the schema. The old postgres-data volume is retained.
+      - postgres-migrations-data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      test: ['CMD-SHELL', 'pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}']
       interval: 5s
       timeout: 3s
       retries: 10
@@ -25,30 +24,30 @@ services:
   redis:
     image: redis:7-alpine
     # BullMQ loses jobs if Redis evicts keys under memory pressure.
-    command: ["redis-server", "--appendonly", "yes", "--maxmemory-policy", "noeviction"]
+    command: ['redis-server', '--appendonly', 'yes', '--maxmemory-policy', 'noeviction']
     ports:
-      - "${REDIS_PORT:-6379}:6379"
+      - '${REDIS_PORT:-6379}:6379'
     volumes:
       - redis-data:/data
     healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
+      test: ['CMD', 'redis-cli', 'ping']
       interval: 5s
       timeout: 3s
       retries: 10
 
   minio:
     image: minio/minio
-    command: ["server", "/data", "--console-address", ":9001"]
+    command: ['server', '/data', '--console-address', ':9001']
     environment:
       MINIO_ROOT_USER: ${S3_ACCESS_KEY:-moodboard}
       MINIO_ROOT_PASSWORD: ${S3_SECRET_KEY:-moodboard-local-secret}
     ports:
-      - "${MINIO_PORT:-9000}:9000"
-      - "${MINIO_CONSOLE_PORT:-9001}:9001"
+      - '${MINIO_PORT:-9000}:9000'
+      - '${MINIO_CONSOLE_PORT:-9001}:9001'
     volumes:
       - minio-data:/data
     healthcheck:
-      test: ["CMD", "mc", "ready", "local"]
+      test: ['CMD', 'mc', 'ready', 'local']
       interval: 5s
       timeout: 3s
       retries: 10
@@ -70,18 +69,18 @@ services:
         mc alias set local http://minio:9000 "$$S3_ACCESS_KEY" "$$S3_SECRET_KEY" &&
         mc mb --ignore-existing "local/$$S3_BUCKET" &&
         mc anonymous set none "local/$$S3_BUCKET"
-    restart: "no"
+    restart: 'no'
 
   mailpit:
     image: axllent/mailpit
     ports:
-      - "${SMTP_PORT:-1025}:1025"
-      - "${MAILPIT_UI_PORT:-8025}:8025"
+      - '${SMTP_PORT:-1025}:1025'
+      - '${MAILPIT_UI_PORT:-8025}:8025'
 
   # Opt-in: docker compose --profile stripe up. Needs a Stripe test-mode key in .env.
   stripe:
     image: stripe/stripe-cli
-    profiles: ["stripe"]
+    profiles: ['stripe']
     environment:
       STRIPE_API_KEY: ${STRIPE_SECRET_KEY:-}
     command:
@@ -89,9 +88,10 @@ services:
       - --forward-to
       - ${STRIPE_WEBHOOK_FORWARD_TO:-http://host.docker.internal:3001/webhooks/stripe}
     extra_hosts:
-      - "host.docker.internal:host-gateway"
+      - 'host.docker.internal:host-gateway'
 
 volumes:
   postgres-data:
+  postgres-migrations-data:
   redis-data:
   minio-data:

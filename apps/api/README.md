@@ -8,4 +8,16 @@ Every board write must follow the transaction and outbox rules in
 and callers without a role receive 404.
 
 Real database migrations begin in `src/database/migrations`; `db/schema.sql`
-remains the reference model and local bootstrap schema.
+remains the reference model. It is not loaded by Compose. The initial migration
+holds a fixed copy.
+
+Run `pnpm dev:api` from the project root. The default address is
+`http://127.0.0.1:3001`. The API validates configuration before it connects to
+Postgres. It creates one connection pool and closes it on shutdown.
+
+`GET /health/live` returns `200` while the API can handle requests.
+`GET /health/ready` returns `200` when Postgres and migration checks pass.
+Otherwise, it returns `503`. Each readiness request has a two-second deadline.
+All checks share one connection. The deadline closes a stalled connection so
+the pool can replace it on the next request.
+Readiness does not create or change database objects.

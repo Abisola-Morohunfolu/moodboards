@@ -2,8 +2,8 @@
 
 The codebase is a TypeScript monorepo with three deployable apps and a small set
 of shared packages. This mirrors the runtime boundaries in
-[02-architecture.md](02-architecture.md) without committing to build tooling or
-dependency versions before the first feature is implemented.
+[02-architecture.md](02-architecture.md). The first backend work unit adds pnpm,
+TypeScript, NestJS, TypeORM, Zod, ESLint, and Jest. Package versions are fixed.
 
 ```text
 apps/
@@ -76,6 +76,7 @@ The `packages/modules` folder is therefore only a documented extension point for
 now. Likewise, kit definitions stay data-only and must not introduce database
 migrations.
 
-The first implementation slice should add the root workspace tooling and build
-one vertical path across `web`, `api`, `contracts`, and `database` rather than
-filling every empty folder up front.
+The first implementation work unit adds root workspace tools and builds the API,
+contracts, and database packages. It includes health routes, migrations, and
+tests. The web app and worker remain outside this work unit. Add a product path
+with account and workspace functions in the next work unit.

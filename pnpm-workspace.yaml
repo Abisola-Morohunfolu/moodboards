@@ -1,0 +1,6 @@
+packages:
+  - apps/api
+  - packages/contracts
+  - packages/database
+onlyBuiltDependencies:
+  - '@nestjs/core'

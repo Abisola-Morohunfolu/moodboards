@@ -1,0 +1,12 @@
+{
+  "extends": "./tsconfig.base.json",
+  "compilerOptions": {
+    "noEmit": true,
+    "types": ["node", "jest"],
+    "paths": {
+      "@moodboard/contracts": ["./packages/contracts/src"],
+      "@moodboard/database": ["./packages/database/src"]
+    }
+  },
+  "include": ["apps/api/src/**/*.ts", "packages/*/src/**/*.ts", "tests/**/*.ts"]
+}

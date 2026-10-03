@@ -23,22 +23,79 @@ A shared mood board that turns inspiration into an agreed plan. Planners and des
 
 ## Local development
 
-`compose.yaml` runs the backing services. The API, workers, and web app run on the host against them.
+Use Node.js 24 and pnpm 10.33.0. The first work unit includes the API and shared
+database and contract packages. The worker and web app do not have code yet.
+
+Start Docker. Then run these commands from the project root:
 
 ```bash
 cp .env.example .env
-docker compose up -d
+pnpm install --frozen-lockfile
+docker compose up -d --wait postgres
+pnpm db:migrate
+pnpm dev:api
 ```
 
 | Service | Address | Use |
 |---------|---------|-----|
-| Postgres 15 | `localhost:5432` | Loads `db/schema.sql` on first start |
+| Postgres 15 | `localhost:5432` | Uses explicit TypeORM migrations |
 | Redis 7 | `localhost:6379` | Pub/sub and BullMQ, with eviction off |
 | MinIO | `localhost:9000`, console `localhost:9001` | S3-compatible storage, private `moodboard-assets` bucket |
 | Mailpit | SMTP `localhost:1025`, inbox `localhost:8025` | Catches every email |
 | Stripe CLI | opt-in: `docker compose --profile stripe up -d` | Forwards test webhooks to `localhost:3001/webhooks/stripe` |
 
-The schema loads only into an empty database. After changing `db/schema.sql`, run `docker compose down -v` and start again. This deletes local data.
+Check `http://127.0.0.1:3001/health/live` and
+`http://127.0.0.1:3001/health/ready`. Both routes return `200` after migration.
+Use `pnpm db:status` to check migration records. This command fails if a migration
+is pending. Use `pnpm start:api` to run the last build without a file watcher.
+
+The database now uses the `postgres-migrations-data` volume. The old
+`postgres-data` volume and its data remain available. Do not delete volumes to
+apply a schema change. Add a migration and run `pnpm db:migrate`.
+
+To start the other backing services, run `docker compose up -d --wait`.
+
+## Backend tests
+
+Use a separate test database. It has temporary storage. These commands do not
+use the development database:
+
+```bash
+pnpm db:test:start
+export TEST_DATABASE_URL=postgres://moodboard_test:moodboard_test@127.0.0.1:5433/moodboard_test
+pnpm check
+pnpm db:test:stop
+```
+
+You must export `TEST_DATABASE_URL`. Tests do not read it from `.env` and do not
+use `DATABASE_URL` as a fallback. Tests require the database name `moodboard_test`.
+Use `TEST_POSTGRES_PORT` to change the test service port. Change the test URL too.
+
+Run `pnpm test:unit`, `pnpm test:integration`, or `pnpm test:e2e` for one test group.
+Database test groups run in sequence. Do not run them against the same database
+at the same time. CI uses a separate Postgres 15 service and runs `pnpm check`.
+
+See [the work unit and its test gates](docs/12-backend-foundation.md).
+
+## Code style
+
+Use braces for all `if`, `else`, and loop bodies. Put the block contents on
+separate lines:
+
+```typescript
+if (!table?.present) {
+  return false;
+}
+```
+
+ESLint also requires strict equality, `const` where possible, and object
+property shorthand. It rejects `var` and unnecessary `else` blocks after a
+return. Prettier formats source and configuration files with two-space
+indentation, single quotes, and a target line width of 100 characters.
+
+Run `pnpm lint:fix`, then `pnpm format` to apply the style. Run `pnpm lint` and
+`pnpm format:check` to check it. `pnpm check` and CI include both checks.
+The formatter skips generated files, Markdown, and the reference SQL schema.
 
 ## Project layout
 
@@ -51,7 +108,7 @@ The schema loads only into an empty database. After changing `db/schema.sql`, ru
 - `packages/modules` — module implementations, introduced when Phase 2 needs them
 - `packages/ui` — shared presentational UI
 
-The folders are intentionally framework-light for now. See
+Only the API, contracts, and database packages have a build setup. See
 [docs/11-project-structure.md](docs/11-project-structure.md) before adding code or
 moving a responsibility between packages.
 
@@ -59,4 +116,4 @@ moving a responsibility between packages.
 
 - Change the spec in the same commit as the code it describes.
 - Add a new entry to `docs/10-decisions.md` when a choice closes off an alternative.
-- `db/schema.sql` is the reference model. Real migrations live with the code once it exists.
+- `db/schema.sql` is the reference model. Real migrations live in the API.
