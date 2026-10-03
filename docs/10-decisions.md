@@ -14,6 +14,22 @@ Each entry states the decision and the reason. Add a new entry when a choice clo
 
 ## Architecture
 
+**D41. Build and test the backend setup first.** The first work unit includes the
+API, shared contracts, database primitives, and explicit migrations. It uses
+pnpm and a CommonJS build. NestJS 11 and TypeORM 0.3 support this build format.
+The web app and worker follow in later work units.
+
+**D42. Use one TypeORM connection pool per process.** Initialize it at startup
+and close it at shutdown. Queries return connections to the pool. Transactions
+use one connection until commit or rollback. Pool limits and timeouts prevent
+unlimited connections and waits.
+
+**D43. Migrations create the database schema.** The initial migration holds a
+fixed copy of the full reference schema. Compose does not load that schema.
+A new development volume preserves the previous volume and its data. Database
+tests use a separate database with temporary storage. Health checks only read
+database state.
+
 **D39. Keep the web app, API, workers, and shared packages in one TypeScript monorepo.** The three runtimes deploy independently but change together often: a board event, job payload, or API response can affect all of them. One repository keeps those contracts atomic while the `apps` and `packages` boundaries prevent runtime concerns from becoming one application.
 
 **D40. Use TanStack Start for the web app.** Its typed file-based router and full-stack React runtime fit the board and client-link experiences without coupling the frontend to Next.js conventions. NestJS remains the authoritative product API and WebSocket gateway.

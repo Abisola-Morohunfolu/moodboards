@@ -2,6 +2,21 @@
 
 REST over HTTPS with JSON bodies. Board routes resolve the caller's board role first and return 404 when there is none. The "Needs" column names the permission from [05-access-control.md](05-access-control.md).
 
+## Health
+
+These routes exist in backend work unit 1. They require no authentication.
+
+| Method | Path | Response |
+|--------|------|----------|
+| GET | `/health/live` | `200`, `{ "status": "ok" }` |
+| GET | `/health/ready` | `200` when database and migration checks pass; otherwise `503` |
+
+Readiness returns `status` and `checks` with `postgres` and `migrations`.
+Each value is `ok` or `down`. A request has a two-second deadline. Responses do
+not include connection details or database errors. These checks only read data.
+
+The product routes below remain specifications for later work units.
+
 ## Auth and account
 
 | Method | Path | Needs | Notes |
