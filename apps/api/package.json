@@ -16,9 +16,13 @@
     "@nestjs/platform-express": "11.2.7",
     "@nestjs/typeorm": "11.0.3",
     "dotenv": "17.2.3",
+    "google-auth-library": "11.1.0",
     "reflect-metadata": "0.2.2",
     "rxjs": "7.8.2",
     "typeorm": "0.3.31",
     "zod": "4.1.12"
+  },
+  "devDependencies": {
+    "@types/express": "5.0.6"
   }
 }

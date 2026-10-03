@@ -29,6 +29,8 @@ create table users (
   avatar_url   text,
   created_at   timestamptz not null default now(),
   deleted_at   timestamptz,
+  password_hash text,
+  google_subject text unique,
   constraint live_user_has_email check (deleted_at is not null or email is not null)
 );
 
@@ -416,3 +418,29 @@ create table reactions (
   kind           reaction_kind not null,
   primary key (item_id, participant_id)
 );
+
+-- Authentication runtime state
+
+create table auth_sessions (
+  token_hash text primary key,
+  user_id uuid not null references users(id) on delete cascade,
+  created_at timestamptz not null default now(),
+  expires_at timestamptz not null
+);
+create index auth_sessions_expiry on auth_sessions (expires_at);
+create index auth_sessions_user on auth_sessions (user_id);
+
+create table google_auth_attempts (
+  state_hash text primary key,
+  nonce text not null,
+  pkce_verifier text not null,
+  expires_at timestamptz not null
+);
+create index google_auth_attempts_expiry on google_auth_attempts (expires_at);
+
+create table auth_rate_limits (
+  key text primary key,
+  count integer not null,
+  expires_at timestamptz not null
+);
+create index auth_rate_limits_expiry on auth_rate_limits (expires_at);

@@ -14,13 +14,79 @@ const databaseUrl = z
       url.pathname.length > 1
     );
   });
-const environmentSchema = z.object({
-  DATABASE_URL: databaseUrl,
-  API_HOST: z.string().min(1).default('127.0.0.1'),
-  API_PORT: z.coerce.number().int().min(1).max(65535).default(3001),
-  DB_POOL_MAX: z.coerce.number().int().min(1).max(100).default(10),
-  NODE_ENV: z.enum(['development', 'test', 'production']).default('development'),
-});
+const originSchema = z
+  .string()
+  .url()
+  .refine((value) => {
+    if (!URL.canParse(value)) {
+      return false;
+    }
+    const url = new URL(value);
+    return ['http:', 'https:'].includes(url.protocol) && url.origin === value;
+  });
+const environmentSchema = z
+  .object({
+    DATABASE_URL: databaseUrl,
+    API_HOST: z.string().min(1).default('127.0.0.1'),
+    API_PORT: z.coerce.number().int().min(1).max(65535).default(3001),
+    DB_POOL_MAX: z.coerce.number().int().min(1).max(100).default(10),
+    NODE_ENV: z.enum(['development', 'test', 'production']).default('development'),
+    AUTH_ALLOWED_ORIGINS: z.preprocess(
+      (value) =>
+        typeof value === 'string' ? value.split(',').map((origin) => origin.trim()) : value,
+      z.array(originSchema).min(1).default(['http://localhost:3000', 'http://127.0.0.1:3000']),
+    ),
+    GOOGLE_CLIENT_ID: z.string().min(1).optional(),
+    GOOGLE_CLIENT_SECRET: z.string().min(1).optional(),
+    GOOGLE_CALLBACK_URL: z
+      .string()
+      .url()
+      .refine((value) => {
+        if (!URL.canParse(value)) {
+          return false;
+        }
+        const url = new URL(value);
+        return (
+          ['http:', 'https:'].includes(url.protocol) &&
+          !url.username &&
+          !url.password &&
+          url.pathname === '/auth/google/callback' &&
+          !url.search &&
+          !url.hash
+        );
+      })
+      .optional(),
+  })
+  .superRefine((config, context) => {
+    const google = [
+      config.GOOGLE_CLIENT_ID,
+      config.GOOGLE_CLIENT_SECRET,
+      config.GOOGLE_CALLBACK_URL,
+    ];
+    if (google.some(Boolean) && !google.every(Boolean)) {
+      context.addIssue({
+        code: 'custom',
+        path: ['GOOGLE_CLIENT_ID'],
+        message: 'Configure all Google fields',
+      });
+    }
+    if (config.NODE_ENV === 'production') {
+      if (config.AUTH_ALLOWED_ORIGINS.some((origin) => !origin.startsWith('https://'))) {
+        context.addIssue({
+          code: 'custom',
+          path: ['AUTH_ALLOWED_ORIGINS'],
+          message: 'HTTPS required',
+        });
+      }
+      if (config.GOOGLE_CALLBACK_URL && !config.GOOGLE_CALLBACK_URL.startsWith('https://')) {
+        context.addIssue({
+          code: 'custom',
+          path: ['GOOGLE_CALLBACK_URL'],
+          message: 'HTTPS required',
+        });
+      }
+    }
+  });
 
 export type ApiConfig = z.infer<typeof environmentSchema>;
 

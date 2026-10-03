@@ -123,5 +123,5 @@ produce a new build. Node.js restarts the API when its compiled files change.
 Set `API_HOST=0.0.0.0` for a container deployment. The local default is
 `127.0.0.1`. Run migrations as a separate deployment step before API startup.
 
-The next work unit adds account and workspace functions. Board routes, workers,
+Account and workspace functions are implemented in [work unit 2](13-backend-accounts-workspaces.md). Board routes, workers,
 and the web app remain outside this work unit.

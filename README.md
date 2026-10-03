@@ -20,10 +20,12 @@ A shared mood board that turns inspiration into an agreed plan. Planners and des
 | [docs/09-roadmap.md](docs/09-roadmap.md) | Build order and milestones |
 | [docs/10-decisions.md](docs/10-decisions.md) | Decision log with reasons |
 | [docs/11-project-structure.md](docs/11-project-structure.md) | Monorepo folders and dependency boundaries |
+| [docs/12-backend-foundation.md](docs/12-backend-foundation.md) | Backend foundation and test gates |
+| [docs/13-backend-accounts-workspaces.md](docs/13-backend-accounts-workspaces.md) | Accounts, cookie sessions, Google login, and workspaces |
 
 ## Local development
 
-Use Node.js 24 and pnpm 10.33.0. The first work unit includes the API and shared
+Use Node.js 24 and pnpm 10.33.0. The backend includes account authentication, workspace onboarding, and shared
 database and contract packages. The worker and web app do not have code yet.
 
 Start Docker. Then run these commands from the project root:
@@ -54,6 +56,26 @@ The database now uses the `postgres-migrations-data` volume. The old
 apply a schema change. Add a migration and run `pnpm db:migrate`.
 
 To start the other backing services, run `docker compose up -d --wait`.
+
+## Account onboarding
+
+All routes are private by default. Signup, login, Google auth, and health are
+explicitly public. Signup creates a personal workspace; signed-in users can
+create a business workspace with `POST /workspaces` and read `/me` or `/workspaces`.
+
+Use JSON POST bodies. Sessions use an HttpOnly cookie and expire after seven
+days. For a local password smoke test:
+
+```bash
+curl -sS -c /tmp/moodboard-cookies.txt -H 'Content-Type: application/json' \
+  -d '{"email":"planner@example.com","password":"correct horse battery staple","displayName":"Planner"}' \
+  http://127.0.0.1:3001/auth/signup
+curl -sS -b /tmp/moodboard-cookies.txt http://127.0.0.1:3001/me
+```
+
+Google sign-in is disabled until all three Google variables are configured.
+See [Google setup and the manual smoke test](docs/13-backend-accounts-workspaces.md).
+Account linking, password reset, and local email verification are deferred.
 
 ## Backend tests
 

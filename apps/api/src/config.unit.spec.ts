@@ -20,6 +20,37 @@ describe('API configuration', () => {
   ])('rejects invalid configuration', (environment) => {
     expect(() => validateEnvironment(environment)).toThrow('Invalid API configuration');
   });
+  it.each([
+    { ...valid, GOOGLE_CLIENT_ID: 'client' },
+    { ...valid, AUTH_ALLOWED_ORIGINS: 'http://localhost:3000/path' },
+    { ...valid, AUTH_ALLOWED_ORIGINS: '*' },
+    { ...valid, NODE_ENV: 'production' },
+    {
+      ...valid,
+      NODE_ENV: 'production',
+      AUTH_ALLOWED_ORIGINS: 'https://app.example.com',
+      GOOGLE_CLIENT_ID: 'client',
+      GOOGLE_CLIENT_SECRET: 'secret',
+      GOOGLE_CALLBACK_URL: 'http://localhost:3001/auth/google/callback',
+    },
+  ])('rejects invalid authentication configuration', (environment) => {
+    expect(() => validateEnvironment(environment)).toThrow('Invalid API configuration');
+  });
+  it('accepts fully configured HTTPS production authentication', () => {
+    expect(
+      validateEnvironment({
+        ...valid,
+        NODE_ENV: 'production',
+        AUTH_ALLOWED_ORIGINS: 'https://app.example.com',
+        GOOGLE_CLIENT_ID: 'client',
+        GOOGLE_CLIENT_SECRET: 'secret',
+        GOOGLE_CALLBACK_URL: 'https://api.example.com/auth/google/callback',
+      }),
+    ).toMatchObject({
+      AUTH_ALLOWED_ORIGINS: ['https://app.example.com'],
+      GOOGLE_CLIENT_ID: 'client',
+    });
+  });
   it('does not include credentials in an error', () => {
     expect(() => validateEnvironment({ DATABASE_URL: 'https://user:secret@localhost/db' })).toThrow(
       'Invalid API configuration: DATABASE_URL',

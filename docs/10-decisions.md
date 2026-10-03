@@ -14,6 +14,21 @@ Each entry states the decision and the reason. Add a new entry when a choice clo
 
 ## Architecture
 
+**D44. Use Postgres-backed opaque cookie sessions for account authentication.**
+Routes are private by default through one global Nest guard, with explicit public
+metadata for health and auth entrypoints. Seven-day sessions are checked against
+current user status on each request; logout revokes immediately. This avoids JWT
+refresh/rotation machinery in the first browser account flow. The authenticated
+principal never substitutes for workspace or board authorization.
+
+**D45. Support passwords and Google without automatic account linking.** Passwords
+use asynchronous scrypt with a versioned encoding. Google uses the official library,
+PKCE, nonce, and single-use browser-bound state. Google identity is keyed by its
+subject, not email. A matching existing email requires the existing login method;
+explicit linking, local email verification, and account recovery are later work.
+Both signup methods create personal workspace ownership and a session atomically.
+
+
 **D41. Build and test the backend setup first.** The first work unit includes the
 API, shared contracts, database primitives, and explicit migrations. It uses
 pnpm and a CommonJS build. NestJS 11 and TypeORM 0.3 support this build format.

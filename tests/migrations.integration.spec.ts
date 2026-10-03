@@ -2,10 +2,11 @@ import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { DataSource, MigrationInterface, QueryRunner } from 'typeorm';
 import { InitialSchema1790985600000 } from '../apps/api/src/database/migrations/1790985600000-initial-schema';
+import { AccountAuth1791072000000 } from '../apps/api/src/database/migrations/1791072000000-account-auth';
 import { migrationsApplied } from '../apps/api/src/database/migration-status';
 import { testDataSource } from './database';
 
-class FailingMigration1790985600001 implements MigrationInterface {
+class FailingMigration1791072000001 implements MigrationInterface {
   async up(runner: QueryRunner): Promise<void> {
     await runner.query('create table failed_migration_probe (id int primary key)');
     await runner.query('select * from missing_migration_table');
@@ -16,8 +17,10 @@ class FailingMigration1790985600001 implements MigrationInterface {
 }
 
 async function schemaObjects(source: DataSource, schema: string): Promise<unknown> {
+  // Reverted columns leave physical attnum gaps. Compare the order of live
+  // columns rather than those internal slot numbers.
   const queries = [
-    `select c.relname, a.attname, a.attnum, format_type(a.atttypid, a.atttypmod) as type,
+    `select c.relname, a.attname, row_number() over (partition by c.relname order by a.attnum)::int as ordinal, format_type(a.atttypid, a.atttypmod) as type,
        a.attnotnull, a.attidentity, pg_get_expr(d.adbin, d.adrelid) as default_value
        from pg_class c join pg_namespace n on n.oid=c.relnamespace
        join pg_attribute a on a.attrelid=c.oid
@@ -42,7 +45,7 @@ async function schemaObjects(source: DataSource, schema: string): Promise<unknow
   return JSON.parse(JSON.stringify(rows).replaceAll(`${schema}.`, '').replaceAll('public.', ''));
 }
 
-describe('Initial schema migration', () => {
+describe('Cumulative schema migrations', () => {
   const source = testDataSource();
   beforeAll(async () => {
     await source.initialize();
@@ -54,16 +57,42 @@ describe('Initial schema migration', () => {
     }
   });
 
-  it('creates the full schema and records one migration', async () => {
+  it('creates the full schema and records both migrations', async () => {
     expect(await migrationsApplied(source)).toBe(true);
-    expect(await source.query('select name from migrations')).toEqual([
+    expect(await source.query('select name from migrations order by id')).toEqual([
       { name: 'InitialSchema1790985600000' },
+      { name: 'AccountAuth1791072000000' },
     ]);
     expect(
       await source.query(
         "select count(*)::int as count from pg_tables where schemaname='public' and tablename <> 'migrations'",
       ),
-    ).toEqual([{ count: 28 }]);
+    ).toEqual([{ count: 31 }]);
+  });
+  it('upgrades and reverts authentication without replacing legacy accounts', async () => {
+    const id = '00000000-0000-4000-8000-000000000001';
+    await source.undoLastMigration();
+    try {
+      expect(await source.query("select to_regclass('public.auth_sessions') as name")).toEqual([
+        { name: null },
+      ]);
+      await source.query('insert into users (id, email, display_name) values ($1, $2, $3)', [
+        id,
+        'legacy@example.com',
+        'Legacy',
+      ]);
+      await source.runMigrations();
+      expect(
+        await source.query('select password_hash, google_subject from users where id=$1', [id]),
+      ).toEqual([{ password_hash: null, google_subject: null }]);
+      await source.undoLastMigration();
+      expect(await source.query('select email, display_name from users where id=$1', [id])).toEqual(
+        [{ email: 'legacy@example.com', display_name: 'Legacy' }],
+      );
+    } finally {
+      await source.query('delete from users where id=$1', [id]);
+      await source.runMigrations();
+    }
   });
   it('does not repeat an applied migration', async () => {
     expect(await source.runMigrations()).toEqual([]);
@@ -87,6 +116,7 @@ describe('Initial schema migration', () => {
   });
   it('reverts the application objects and can run again', async () => {
     await source.undoLastMigration();
+    await source.undoLastMigration();
     try {
       expect(await migrationsApplied(source)).toBe(false);
       expect(
@@ -101,15 +131,22 @@ describe('Initial schema migration', () => {
   });
   it('rolls back a failed migration without a partial table or history record', async () => {
     const failing = testDataSource();
-    failing.setOptions({ migrations: [InitialSchema1790985600000, FailingMigration1790985600001] });
+    failing.setOptions({
+      migrations: [
+        InitialSchema1790985600000,
+        AccountAuth1791072000000,
+        FailingMigration1791072000001,
+      ],
+    });
     await failing.initialize();
     try {
       await expect(failing.runMigrations()).rejects.toThrow();
       expect(
         await failing.query("select to_regclass('failed_migration_probe') as table_name"),
       ).toEqual([{ table_name: null }]);
-      expect(await failing.query('select name from migrations')).toEqual([
+      expect(await failing.query('select name from migrations order by id')).toEqual([
         { name: 'InitialSchema1790985600000' },
+        { name: 'AccountAuth1791072000000' },
       ]);
     } finally {
       await failing.destroy();

@@ -2,12 +2,14 @@ import 'reflect-metadata';
 import { ConsoleLogger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { NestFactory } from '@nestjs/core';
+import { configureHttp } from './app.setup';
 import { AppModule } from './app.module';
 import { ApiConfig } from './config';
 
 export async function bootstrap(): Promise<void> {
   const logger = new ConsoleLogger('API', { json: true });
   const app = await NestFactory.create(AppModule.forRoot(), { logger, abortOnError: false });
+  configureHttp(app);
   app.enableShutdownHooks();
   const config = app.get(ConfigService<ApiConfig, true>);
   try {
