@@ -1,9 +1,10 @@
 # Data model
 
-28 tables in four groups. The full DDL is in [../db/schema.sql](../db/schema.sql).
+31 tables in five groups. The full DDL is in [../db/schema.sql](../db/schema.sql).
 
 | Group | Tables |
 |-------|--------|
+| Authentication | `auth_sessions`, `google_auth_attempts`, `auth_rate_limits` |
 | People and access | `users`, `workspaces`, `workspace_members`, `invites`, `clients`, `client_contacts`, `board_participants` |
 | Boards and content | `boards`, `board_modules`, `sections`, `items`, `assets`, `link_previews`, `board_events`, `board_event_deliveries` |
 | Billing | `subscriptions`, `purchases`, `stripe_events` |
@@ -72,6 +73,12 @@ Column lists live in `db/schema.sql`. The animated map shows them per table: htt
 ## Design rules
 
 ### Identity
+
+- Account credentials use nullable `users.password_hash` and unique nullable
+  `users.google_subject`. Google subject identifies the external account; email
+  matching never links accounts automatically. Session tokens and OAuth state
+  are stored only as hashes. Authentication runtime rows expire; the session
+  guard rejects expired sessions and deleted users.
 
 - `board_participants` is the one identity on a board. A row holds `user_id` (signed in), `contact_id` (client link), or both. Items, decisions, scores, votes, and reactions all point at a participant, so no module handles "user or contact" itself.
 - A row with `role` null records a person who got in through general access or the business owner rule. The API creates it the first time a signed-in person opens the board. It grants nothing, so restricting the board still removes them. Creating it writes no `participant.joined` and counts toward no participant-based rule, so opening a board has no side effects.

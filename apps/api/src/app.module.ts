@@ -2,6 +2,7 @@ import { resolve } from 'node:path';
 import { DynamicModule, Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
 import { validateEnvironment } from './config';
+import { AuthModule } from './features/auth/auth.module';
 import { HealthModule } from './features/health/health.module';
 import { DatabaseModule } from './database/database.module';
 
@@ -13,6 +14,7 @@ export class AppModule {
       imports: [
         ConfigModule.forRoot({
           isGlobal: true,
+          skipProcessEnv: true,
           envFilePath: resolve(__dirname, '../../../.env'),
           ignoreEnvFile: environment !== undefined,
           ignoreEnvVars: environment !== undefined,
@@ -20,6 +22,7 @@ export class AppModule {
         }),
         DatabaseModule,
         HealthModule,
+        AuthModule,
       ],
     };
   }

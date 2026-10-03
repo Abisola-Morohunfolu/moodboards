@@ -19,8 +19,16 @@ jobs:
         options: >-
           --health-cmd "pg_isready -U moodboard_test -d moodboard_test"
           --health-interval 1s --health-timeout 3s --health-retries 30
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6380:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 1s --health-timeout 3s --health-retries 30
     env:
       TEST_DATABASE_URL: postgres://moodboard_test:moodboard_test@127.0.0.1:5433/moodboard_test
+      TEST_REDIS_URL: redis://127.0.0.1:6380/15
     steps:
       - uses: actions/checkout@v4
       - uses: pnpm/action-setup@v4

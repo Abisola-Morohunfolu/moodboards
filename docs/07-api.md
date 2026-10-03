@@ -15,15 +15,25 @@ Readiness returns `status` and `checks` with `postgres` and `migrations`.
 Each value is `ok` or `down`. A request has a two-second deadline. Responses do
 not include connection details or database errors. These checks only read data.
 
-The product routes below remain specifications for later work units.
+Account signup/login/logout, `/me`, and workspace creation/listing exist in
+backend work unit 2. Other product routes remain specifications.
+
+The global session guard makes routes private by default; `@Public()` explicitly
+opens health and auth entry routes. Public auth routes still enforce JSON bodies,
+origin checks, rate limits, and Google state/token validation. Protected handlers
+receive the typed current-user principal. Authentication is separate from workspace
+and board authorization. See [work unit 2](13-backend-accounts-workspaces.md) for
+contracts, cookie policy, Google setup, and failure behavior.
 
 ## Auth and account
 
 | Method | Path | Needs | Notes |
 |--------|------|-------|-------|
-| POST | `/auth/signup` | none | Creates a user and a personal workspace |
-| POST | `/auth/login` | none | |
-| POST | `/auth/logout` | signed in | |
+| POST | `/auth/signup` | none | Email/password; user, personal workspace, owner membership, and session in one transaction |
+| POST | `/auth/login` | none | Email/password, creates a fresh cookie session |
+| GET | `/auth/google` | none | Google authorization redirect with PKCE and state |
+| GET | `/auth/google/callback` | OAuth state and token validation | Google signup/login; account JSON and cookie |
+| POST | `/auth/logout` | signed in | Revokes current session and clears its cookie |
 | GET | `/me` | signed in | User, workspaces, roles |
 | DELETE | `/me` | signed in | Anonymizes the account. 409 while the caller is the only owner of a workspace with other members |
 

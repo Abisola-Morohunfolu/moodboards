@@ -14,6 +14,21 @@ Each entry states the decision and the reason. Add a new entry when a choice clo
 
 ## Architecture
 
+**D44. Use Postgres-backed opaque cookie sessions for account authentication.**
+Routes are private by default through one global Nest guard, with explicit public
+metadata for health and auth entrypoints. Seven-day sessions are checked against
+current user status on each request; logout revokes immediately. This avoids JWT
+refresh/rotation machinery in the first browser account flow. The authenticated
+principal never substitutes for workspace or board authorization.
+
+**D45. Support passwords and Google without automatic account linking.** Passwords
+use asynchronous scrypt with a versioned encoding. Google uses the official library,
+PKCE, nonce, and single-use browser-bound state. Google identity is keyed by its
+subject, not email. A matching existing email requires the existing login method;
+explicit linking, local email verification, and account recovery are later work.
+Both signup methods create personal workspace ownership and a session atomically.
+
+
 **D41. Build and test the backend setup first.** The first work unit includes the
 API, shared contracts, database primitives, and explicit migrations. It uses
 pnpm and a CommonJS build. NestJS 11 and TypeORM 0.3 support this build format.
@@ -107,3 +122,5 @@ database state.
 **D28. Webhook grants run in one transaction with the event record.** Recording the event first and granting later loses the grant if the second step fails. Because the record and the grant commit together, a `stripe_events` row means the event was processed, and the handler skips on an id conflict.
 
 **D29. The preview worker fetches through an egress filter.** It fetches any URL a user pastes, so it refuses private, loopback, link-local, and metadata addresses, checks every redirect, and caps time and size.
+
+**D39. Authentication rate limits use Redis; sessions stay in Postgres.** Short-lived counters expire automatically and keep repeated authentication writes off the application database. Atomic increments share limits across API instances. Redis failures reject new authentication attempts with 503 after a bounded check; existing sessions and logout remain available through Postgres. Keeping sessions in Postgres preserves transactional signup and active-user validation without introducing cross-store session writes or cache invalidation.

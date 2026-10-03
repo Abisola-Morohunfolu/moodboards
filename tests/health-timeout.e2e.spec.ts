@@ -7,6 +7,7 @@ import { createDataSource } from '@moodboard/database';
 import { AppModule } from '../apps/api/src/app.module';
 import { migrations } from '../apps/api/src/database/migrations';
 import { testDatabaseUrl } from './database';
+import { testRedisUrl } from './redis';
 
 it('discards a stalled readiness connection and recovers with a one-connection pool', async () => {
   const target = new URL(testDatabaseUrl());
@@ -52,7 +53,7 @@ it('discards a stalled readiness connection and recovers with a one-connection p
     await source.initialize();
     await source.runMigrations();
     const module = await Test.createTestingModule({
-      imports: [AppModule.forRoot({ DATABASE_URL: testDatabaseUrl() })],
+      imports: [AppModule.forRoot({ DATABASE_URL: testDatabaseUrl(), REDIS_URL: testRedisUrl() })],
     })
       .overrideProvider(DataSource)
       .useValue(source)
