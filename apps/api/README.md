@@ -36,3 +36,23 @@ Limits return 429 with `Retry-After`. Redis failures return a generic 503 on
 authentication entrypoints while existing sessions and logout keep using Postgres.
 See [work unit 2](../../docs/13-backend-accounts-workspaces.md) for API contracts,
 Google setup, migration behavior, tests, and deferred functionality.
+
+## Boards, sections, and notes
+
+Blank canvas boards work in personal and business workspaces. `GET /boards`
+lists accessible boards with an existing account participant identity, and
+`GET /workspaces/:id/boards` also discovers boards available through workspace
+access. Board operations resolve current roles; a personal workspace owner has
+no implicit access to restricted boards, while business owners retain recovery
+access. Locked and archived boards are read-only.
+
+Note creation is idempotent by client-generated UUID. Content edits require a
+version; movement uses last write wins without changing that version. Every
+mutation and its metadata-only event commit together. Section deletion returns
+notes to Unsorted. Prices are omitted when the reader's role cannot see them.
+PATCH and DELETE are available through credentialed CORS. POST, PATCH, and PUT
+bodies require JSON; origin checks include bodyless DELETE.
+
+See [work unit 3](../../docs/14-backend-board-core.md) for contracts, the transaction
+diagram, and tests. Events remain undispatched until a later work unit; there
+are no WebSockets, media jobs, starter kits, or archive/unarchive routes yet.

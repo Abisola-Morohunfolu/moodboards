@@ -122,7 +122,8 @@ Items, decisions, and events point at participant rows, so people are anonymized
 - The dispatcher writes one `board_event_deliveries` row per target (a module or a job queue) and sets `fanned_out_at`. Each target retries alone, up to 10 attempts, then gets `failed_at`. `dispatched_at` is set once every delivery is done or failed.
 - Handlers must be idempotent. Module tables that a handler inserts into carry a natural key where needed (`checklist_tasks.source_key`).
 - Dispatched events older than 30 days are deleted nightly. Clients that fall further behind reload the board.
-- Event types: `board.created`, `board.upgraded`, `item.created`, `item.moved`, `item.updated`, `item.deleted`, `item.decided`, `approval.state_changed`, `preview.ready`, `asset.ready`, `participant.joined`, `access.changed`, `module.enabled`, `module.disabled`, `budget.changed`.
+- Event types: `board.created`, `board.updated`, `board.upgraded`, `section.created`, `section.updated`, `section.deleted`, `item.created`, `item.moved`, `item.updated`, `item.deleted`, `item.decided`, `approval.state_changed`, `preview.ready`, `asset.ready`, `participant.joined`, `access.changed`, `module.enabled`, `module.disabled`, `budget.changed`.
+- Work unit 3 emits board, section, and note mutation events with typed metadata-only payloads. It persists the outbox but defers fan-out, Redis publishing, replay, and pruning; dispatched timestamps remain unset.
 
 ### Modules
 

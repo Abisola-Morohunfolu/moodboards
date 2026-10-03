@@ -8,7 +8,7 @@ export function configureHttp(app: INestApplication): void {
   app.enableCors({
     origin: origins,
     credentials: true,
-    methods: ['GET', 'POST', 'OPTIONS'],
+    methods: ['GET', 'POST', 'PATCH', 'DELETE', 'OPTIONS'],
     allowedHeaders: ['Content-Type'],
   });
   // Account responses must not be cached by a browser or intermediary.

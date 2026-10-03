@@ -49,6 +49,11 @@ flowchart LR
 
 ## The write path
 
+This section describes the complete target architecture. [Backend work unit
+3](14-backend-board-core.md) implements transactional board/section/note writes,
+event sequence allocation, and the existing notification trigger. Redis event
+publishing, dispatchers, workers, and WebSockets remain later work units.
+
 1. The API checks the caller's board role, changes the core tables, increments `boards.event_seq`, and inserts one `board_events` row with that `board_seq`, all in one transaction. The increment locks the board row, so a board's events commit in `board_seq` order.
 2. After commit, the API publishes the event to the board's Redis channel. Open browsers update at once, without waiting for the dispatcher.
 3. A trigger calls `pg_notify('board_events', id)`. A dispatcher claims the event, creates one `board_event_deliveries` row per target, and sets `fanned_out_at`. Targets are each enabled module that listens to the event type, and each job queue it feeds.

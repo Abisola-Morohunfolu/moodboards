@@ -76,7 +76,8 @@ The `packages/modules` folder is therefore only a documented extension point for
 now. Likewise, kit definitions stay data-only and must not introduce database
 migrations.
 
-The first implementation work unit adds root workspace tools and builds the API,
-contracts, and database packages. It includes health routes, migrations, and
-tests. The web app and worker remain outside this work unit. Add a product path
-with account and workspace functions in the next work unit.
+The first implementation work unit adds root workspace tools, health, migrations,
+and shared packages. Work unit 2 adds accounts and workspace onboarding. Work
+unit 3 adds access, boards, sections, and note features, plus the transactional
+event writer under API platform adapters. Blank boards do not yet need a kits
+package or module registry. The web app and worker still have no runtime code.
