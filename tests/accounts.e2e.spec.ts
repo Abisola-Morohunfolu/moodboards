@@ -12,6 +12,8 @@ import { configureHttp } from '../apps/api/src/app.setup';
 import { AuthPrincipal, CurrentUser, Public } from '../apps/api/src/features/auth/auth.decorators';
 import { FLOW_COOKIE, SESSION_COOKIE, tokenHash } from '../apps/api/src/features/auth/cookies';
 import { GoogleService } from '../apps/api/src/features/auth/google.service';
+import { RedisRateLimitStore } from '../apps/api/src/features/auth/redis-rate-limit.store';
+import { testRateLimitStore, testRedisUrl } from './redis';
 import { testDatabaseUrl, testDataSource } from './database';
 
 @Controller('test-only')
@@ -32,6 +34,7 @@ function responseCookie(response: request.Response, name = SESSION_COOKIE): stri
 }
 describe('Account and workspace HTTP onboarding', () => {
   const source = testDataSource(5);
+  const store = testRateLimitStore();
   const databaseUrl = testDatabaseUrl();
   const developmentUrl = process.env.DATABASE_URL;
   let app: INestApplication;
@@ -50,10 +53,12 @@ describe('Account and workspace HTTP onboarding', () => {
   beforeAll(async () => {
     await source.initialize();
     await source.runMigrations();
+    await store.client.connect();
     const module = await Test.createTestingModule({
       imports: [
         AppModule.forRoot({
           DATABASE_URL: databaseUrl,
+          REDIS_URL: testRedisUrl(),
           GOOGLE_CLIENT_ID: 'test-client',
           GOOGLE_CLIENT_SECRET: 'test-secret',
           GOOGLE_CALLBACK_URL: 'http://127.0.0.1:3001/auth/google/callback',
@@ -63,6 +68,8 @@ describe('Account and workspace HTTP onboarding', () => {
     })
       .overrideProvider(DataSource)
       .useValue(source)
+      .overrideProvider(RedisRateLimitStore)
+      .useValue(store)
       .compile();
     // Nest configuration assigns validated values to process.env. Keep the
     // development-database guard independent of this test app's configuration.
@@ -77,6 +84,7 @@ describe('Account and workspace HTTP onboarding', () => {
     await app.listen(0, '127.0.0.1');
   });
   beforeEach(async () => {
+    await store.client.flushDb();
     await source.query(
       'truncate users, workspaces, auth_rate_limits, google_auth_attempts cascade',
     );
@@ -85,6 +93,7 @@ describe('Account and workspace HTTP onboarding', () => {
     jest.restoreAllMocks();
   });
   afterAll(async () => {
+    await store.client.flushDb();
     await source.query(
       'truncate users, workspaces, auth_rate_limits, google_auth_attempts cascade',
     );
@@ -290,6 +299,36 @@ describe('Account and workspace HTTP onboarding', () => {
       .send({ ...input, email: 'sixth@example.com' })
       .expect(429);
   });
+  it('returns 503 for auth during a Redis outage while existing sessions and logout work', async () => {
+    const signedUp = await signup();
+    const cookie = responseCookie(signedUp);
+    store.client.destroy();
+    try {
+      const failed = await request(app.getHttpServer())
+        .post('/auth/login')
+        .send({ email: input.email, password: input.password })
+        .expect(503);
+      expect(failed.body.message).toBe('Authentication temporarily unavailable');
+      expect(failed.headers['retry-after']).toBeUndefined();
+      await request(app.getHttpServer()).post('/auth/signup').send(input).expect(503);
+      await request(app.getHttpServer()).get('/auth/google').expect(503);
+      await request(app.getHttpServer()).get('/auth/google/callback').expect(503);
+      await request(app.getHttpServer()).get('/me').set('Cookie', cookie).expect(200);
+      await request(app.getHttpServer()).get('/health/live').expect(200);
+      await request(app.getHttpServer())
+        .post('/auth/logout')
+        .set('Cookie', cookie)
+        .send({})
+        .expect(204);
+      await request(app.getHttpServer()).get('/me').set('Cookie', cookie).expect(401);
+    } finally {
+      await store.client.connect();
+    }
+    await request(app.getHttpServer())
+      .post('/auth/login')
+      .send({ email: input.email, password: input.password })
+      .expect(200);
+  });
   it('supports Google signup and returning login without duplicate workspaces or profile changes', async () => {
     const exchange = jest.spyOn(google, 'exchange').mockResolvedValue(identity);
     const first = await googleFlow();
@@ -424,12 +463,16 @@ describe('Account and workspace HTTP onboarding', () => {
   });
   it('keeps email authentication and health available when Google is disabled', async () => {
     const otherSource = testDataSource();
+    const otherStore = testRateLimitStore();
     await otherSource.initialize();
+    await otherStore.client.connect();
     const module = await Test.createTestingModule({
-      imports: [AppModule.forRoot({ DATABASE_URL: testDatabaseUrl() })],
+      imports: [AppModule.forRoot({ DATABASE_URL: testDatabaseUrl(), REDIS_URL: testRedisUrl() })],
     })
       .overrideProvider(DataSource)
       .useValue(otherSource)
+      .overrideProvider(RedisRateLimitStore)
+      .useValue(otherStore)
       .compile();
     const otherApp = module.createNestApplication({ logger: false });
     configureHttp(otherApp);

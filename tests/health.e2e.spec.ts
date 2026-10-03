@@ -5,6 +5,7 @@ import request from 'supertest';
 import { liveResponseSchema, readyResponseSchema } from '@moodboard/contracts';
 import { AppModule } from '../apps/api/src/app.module';
 import { testDatabaseUrl, testDataSource } from './database';
+import { testRedisUrl } from './redis';
 
 describe('Health routes with Postgres', () => {
   const source = testDataSource(1);
@@ -13,7 +14,7 @@ describe('Health routes with Postgres', () => {
     await source.initialize();
     await source.runMigrations();
     const module = await Test.createTestingModule({
-      imports: [AppModule.forRoot({ DATABASE_URL: testDatabaseUrl() })],
+      imports: [AppModule.forRoot({ DATABASE_URL: testDatabaseUrl(), REDIS_URL: testRedisUrl() })],
     })
       .overrideProvider(DataSource)
       .useValue(source)

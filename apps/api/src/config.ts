@@ -27,6 +27,23 @@ const originSchema = z
 const environmentSchema = z
   .object({
     DATABASE_URL: databaseUrl,
+    REDIS_URL: z
+      .string()
+      .url()
+      .refine((value) => {
+        if (!URL.canParse(value)) {
+          return false;
+        }
+        const url = new URL(value);
+        return (
+          ['redis:', 'rediss:'].includes(url.protocol) &&
+          url.hostname !== '' &&
+          /^(\/\d*)?$/.test(url.pathname) &&
+          !url.search &&
+          !url.hash
+        );
+      })
+      .default('redis://127.0.0.1:6379'),
     API_HOST: z.string().min(1).default('127.0.0.1'),
     API_PORT: z.coerce.number().int().min(1).max(65535).default(3001),
     DB_POOL_MAX: z.coerce.number().int().min(1).max(100).default(10),

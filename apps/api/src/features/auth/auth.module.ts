@@ -7,6 +7,7 @@ import { AuthService } from './auth.service';
 import { GoogleService } from './google.service';
 import { PasswordService } from './password.service';
 import { RateLimitService } from './rate-limit.service';
+import { RedisRateLimitStore } from './redis-rate-limit.store';
 import { RequestProtectionGuard } from './request-protection.guard';
 import { SessionAuthGuard } from './session-auth.guard';
 import { SessionRepository } from './session.repository';
@@ -20,6 +21,7 @@ import { SessionRepository } from './session.repository';
     GoogleService,
     PasswordService,
     RateLimitService,
+    RedisRateLimitStore,
     SessionRepository,
     { provide: APP_GUARD, useClass: RequestProtectionGuard },
     { provide: APP_GUARD, useClass: SessionAuthGuard },

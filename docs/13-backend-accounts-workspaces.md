@@ -178,13 +178,34 @@ not part of automated checks.
 
 ## Shared rate limits and migration
 
-Postgres stores counters shared across API instances. Signup allows five
+Redis stores counters shared across API instances. Signup allows five
 requests/minute/IP. Login allows ten/minute/IP and ten/minute/normalized email.
 Google start and callback each allow twenty/minute/IP. Exceeded limits return 429
-and `Retry-After`. Keys hash IPs and email addresses. Expired rate counters and
-OAuth attempts are cleaned in batches of at most 50 during authentication traffic.
+and `Retry-After`. Keys hash IPs and email addresses under the
+`moodboard:auth:rate-limit:` prefix. An atomic Lua script increments each counter
+and sets a 60-second expiry only on its first attempt. Later requests do not
+extend the window. Redis automatically expires counters. Expired OAuth attempts
+are cleaned in batches of at most 50 when starting Google sign-in.
 Proxy forwarding headers are not trusted by default; deployment must configure
 trusted proxies according to the actual network before relying on forwarded IPs.
+
+Configure `REDIS_URL` (`redis://127.0.0.1:6379` locally; `rediss://` is supported
+for TLS). One client per API instance reconnects automatically, disables offline
+command queuing, and bounds each counter check to one second. A one-second socket
+inactivity timeout also covers startup and reconnection handshakes; half-second
+heartbeats keep healthy idle connections open. A stalled socket
+is discarded; an uncertain increment is never retried within the request.
+Redis connection, timeout, or write errors fail closed with a generic 503 on
+signup, login, and Google routes. Only exceeded limits return 429.
+
+Sessions and OAuth state remain in Postgres. Redis outages do not prevent API
+startup, session validation, logout, or Postgres health checks. Readiness still
+reports Postgres and migrations; it does not promise that sign-in is available.
+Development Docker binds Redis to loopback, persists its data, and uses
+`noeviction` with `REDIS_MAXMEMORY` (default 256mb). Memory exhaustion rejects
+writes rather than silently resetting counters. Redis loss or failover can
+still reset counters. Production should monitor capacity and isolate queue
+traffic when it would threaten authentication availability.
 
 `AccountAuth1791072000000` adds nullable credential columns and three runtime
 state tables. Existing users are preserved without credentials. The initial
@@ -193,11 +214,17 @@ before API deployment. Never recreate volumes to apply this change. Reverting
 this migration removes its credentials and sessions; the CLI continues to permit
 reverts only on the disposable test database.
 
+The historical `auth_rate_limits` table remains for migration compatibility;
+the API no longer reads or writes it. This change requires no new schema migration.
+
 ## Validation
 
-Run `pnpm check` with the disposable `TEST_DATABASE_URL`. Tests cover default
+Run `pnpm check` with disposable `TEST_DATABASE_URL` and `TEST_REDIS_URL`
+(`redis://127.0.0.1:6380/15`). Tests cover default
 private routes and principal attachment, contracts, cookies, hashing, session
 revocation/expiry, workspace isolation, rollback and concurrent signup, shared
-rate limits, Google state replay and identity collisions, invalid provider claims,
+Redis rate limits across separate connections, counter expiry, fail-closed
+outages with existing sessions still working, stalled Redis connection recovery,
+Google state replay and identity collisions, invalid provider claims,
 and cumulative migration upgrade/revert with legacy rows. No live Google access
 or development database is required.

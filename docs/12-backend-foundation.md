@@ -79,6 +79,7 @@ Start Docker, then run these commands from the project root:
 pnpm install --frozen-lockfile
 pnpm db:test:start
 export TEST_DATABASE_URL=postgres://moodboard_test:moodboard_test@127.0.0.1:5433/moodboard_test
+export TEST_REDIS_URL=redis://127.0.0.1:6380/15
 pnpm check
 pnpm db:test:stop
 ```
@@ -86,7 +87,9 @@ pnpm db:test:stop
 Database tests require `TEST_DATABASE_URL`. They reject a database name other
 than `moodboard_test`. They also reject the development database as a test
 target. The test service uses temporary storage. Stop it only after the tests
-finish. CI supplies its own separate Postgres 15 service.
+finish. The same test stack supplies disposable Redis on port 6380; Redis auth
+tests require `TEST_REDIS_URL` with database 15 and never use `REDIS_URL` as a
+fallback. CI supplies its own separate Postgres 15 and Redis 7 services.
 
 `pnpm check` runs format checks, lint, build, type checks, unit tests, integration tests, and
 HTTP tests. Any failed check returns a nonzero exit code.
@@ -112,7 +115,7 @@ A full database outage can still require connection retries by the caller.
 
 ## Development startup
 
-Copy `.env.example` to `.env`. Start the development Postgres service. Apply the
+Copy `.env.example` to `.env`. Start the development Postgres and Redis services. Apply the
 migration, then start the API. The new database volume preserves the previous
 volume and its data. See the root README for the commands.
 

@@ -57,6 +57,30 @@ describe('Google identity adapter', () => {
     expect(exchange).toHaveBeenCalledWith({ code: 'code', codeVerifier: 'verifier' });
     expect(verify).toHaveBeenCalledWith({ idToken: 'id-token', audience: 'client-id' });
   });
+  it.each(['token', 'certificates'] as const)(
+    'does not retry failed %s requests through the real Google transport',
+    async (endpoint) => {
+      // Capture the client without replacing its request or retry machinery.
+      const generateAuthUrl = jest.spyOn(OAuth2Client.prototype, 'generateAuthUrl');
+      const adapter = new GoogleService(
+        { query } as unknown as DataSource,
+        new ConfigService(configuration),
+      );
+      await adapter.start();
+      const client = generateAuthUrl.mock.contexts[0] as OAuth2Client;
+      const transport = client.transporter;
+      const provider = jest.fn(async () => new Response('{}', { status: 503 }));
+      transport.defaults.fetchImplementation = provider;
+      if (endpoint === 'token') {
+        await expect(
+          adapter.exchange('code', { nonce: 'nonce', pkce_verifier: 'verifier' }),
+        ).rejects.toThrow('Google sign-in failed');
+      } else {
+        await expect(client.getFederatedSignonCertsAsync()).rejects.toThrow();
+      }
+      expect(provider).toHaveBeenCalledTimes(1);
+    },
+  );
   it.each([
     { ...claims, nonce: 'wrong' },
     { ...claims, email_verified: false },

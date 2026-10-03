@@ -49,12 +49,16 @@ export class GoogleService {
       clientId,
       clientSecret: this.config.get('GOOGLE_CLIENT_SECRET', { infer: true }),
       redirectUri: this.config.get('GOOGLE_CALLBACK_URL', { infer: true }),
-      transporterOptions: { timeout: 5000, retry: false },
+      // OAuth2Client supplies retry:true on individual requests. A zero retry
+      // budget survives that override for both token exchange and certificate fetches.
+      transporterOptions: { timeout: 5000, retryConfig: { retry: 0 } },
     });
     return this.oauthClient;
   }
   async start(): Promise<{ state: string; url: string }> {
     const client = this.client();
+    await this.source.query(`delete from google_auth_attempts where state_hash in
+      (select state_hash from google_auth_attempts where expires_at<=now() order by expires_at limit 50)`);
     const state = randomToken();
     const nonce = randomToken();
     const pkce = await client.generateCodeVerifierAsync();

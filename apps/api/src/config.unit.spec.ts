@@ -7,6 +7,7 @@ describe('API configuration', () => {
       API_PORT: 3001,
       API_HOST: '127.0.0.1',
       DB_POOL_MAX: 10,
+      REDIS_URL: 'redis://127.0.0.1:6379',
     });
   });
   it.each([
@@ -17,6 +18,10 @@ describe('API configuration', () => {
     { ...valid, API_PORT: '0' },
     { ...valid, API_PORT: '65536' },
     { ...valid, DB_POOL_MAX: '0' },
+    { ...valid, REDIS_URL: 'invalid' },
+    { ...valid, REDIS_URL: 'https://localhost' },
+    { ...valid, REDIS_URL: 'redis://localhost/not-a-database' },
+    { ...valid, REDIS_URL: 'redis://localhost/0?password=secret' },
   ])('rejects invalid configuration', (environment) => {
     expect(() => validateEnvironment(environment)).toThrow('Invalid API configuration');
   });
@@ -55,5 +60,13 @@ describe('API configuration', () => {
     expect(() => validateEnvironment({ DATABASE_URL: 'https://user:secret@localhost/db' })).toThrow(
       'Invalid API configuration: DATABASE_URL',
     );
+    expect(() =>
+      validateEnvironment({ ...valid, REDIS_URL: 'https://user:secret@localhost' }),
+    ).toThrow('Invalid API configuration: REDIS_URL');
+  });
+  it('accepts Redis TLS URLs with credentials and a database number', () => {
+    expect(
+      validateEnvironment({ ...valid, REDIS_URL: 'rediss://user:secret@redis.example:6380/1' }),
+    ).toMatchObject({ REDIS_URL: 'rediss://user:secret@redis.example:6380/1' });
   });
 });

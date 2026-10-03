@@ -33,7 +33,7 @@ Start Docker. Then run these commands from the project root:
 ```bash
 cp .env.example .env
 pnpm install --frozen-lockfile
-docker compose up -d --wait postgres
+docker compose up -d --wait postgres redis
 pnpm db:migrate
 pnpm dev:api
 ```
@@ -41,7 +41,7 @@ pnpm dev:api
 | Service | Address | Use |
 |---------|---------|-----|
 | Postgres 15 | `localhost:5432` | Uses explicit TypeORM migrations |
-| Redis 7 | `localhost:6379` | Pub/sub and BullMQ, with eviction off |
+| Redis 7 | `127.0.0.1:6379` | Authentication rate limits; future pub/sub and BullMQ, with eviction off |
 | MinIO | `localhost:9000`, console `localhost:9001` | S3-compatible storage, private `moodboard-assets` bucket |
 | Mailpit | SMTP `localhost:1025`, inbox `localhost:8025` | Catches every email |
 | Stripe CLI | opt-in: `docker compose --profile stripe up -d` | Forwards test webhooks to `localhost:3001/webhooks/stripe` |
@@ -74,17 +74,21 @@ curl -sS -b /tmp/moodboard-cookies.txt http://127.0.0.1:3001/me
 ```
 
 Google sign-in is disabled until all three Google variables are configured.
+Authentication rate limits use `REDIS_URL`. Exceeded limits return 429 with
+`Retry-After`; unavailable Redis returns 503 on signup, login, and Google routes.
+Existing Postgres sessions and logout continue working during a Redis outage.
 See [Google setup and the manual smoke test](docs/13-backend-accounts-workspaces.md).
 Account linking, password reset, and local email verification are deferred.
 
 ## Backend tests
 
-Use a separate test database. It has temporary storage. These commands do not
-use the development database:
+Use separate Postgres and Redis test services. Both have temporary storage.
+These commands do not use the development stores:
 
 ```bash
 pnpm db:test:start
 export TEST_DATABASE_URL=postgres://moodboard_test:moodboard_test@127.0.0.1:5433/moodboard_test
+export TEST_REDIS_URL=redis://127.0.0.1:6380/15
 pnpm check
 pnpm db:test:stop
 ```
@@ -92,10 +96,12 @@ pnpm db:test:stop
 You must export `TEST_DATABASE_URL`. Tests do not read it from `.env` and do not
 use `DATABASE_URL` as a fallback. Tests require the database name `moodboard_test`.
 Use `TEST_POSTGRES_PORT` to change the test service port. Change the test URL too.
+Export `TEST_REDIS_URL` as well. Redis tests require database 15 on the disposable
+service and never fall back to `REDIS_URL`. `TEST_REDIS_PORT` changes its port.
 
 Run `pnpm test:unit`, `pnpm test:integration`, or `pnpm test:e2e` for one test group.
 Database test groups run in sequence. Do not run them against the same database
-at the same time. CI uses a separate Postgres 15 service and runs `pnpm check`.
+at the same time. CI uses separate Postgres 15 and Redis 7 services and runs `pnpm check`.
 
 See [the work unit and its test gates](docs/12-backend-foundation.md).
 

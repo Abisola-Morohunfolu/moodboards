@@ -122,3 +122,5 @@ database state.
 **D28. Webhook grants run in one transaction with the event record.** Recording the event first and granting later loses the grant if the second step fails. Because the record and the grant commit together, a `stripe_events` row means the event was processed, and the handler skips on an id conflict.
 
 **D29. The preview worker fetches through an egress filter.** It fetches any URL a user pastes, so it refuses private, loopback, link-local, and metadata addresses, checks every redirect, and caps time and size.
+
+**D39. Authentication rate limits use Redis; sessions stay in Postgres.** Short-lived counters expire automatically and keep repeated authentication writes off the application database. Atomic increments share limits across API instances. Redis failures reject new authentication attempts with 503 after a bounded check; existing sessions and logout remain available through Postgres. Keeping sessions in Postgres preserves transactional signup and active-user validation without introducing cross-store session writes or cache invalidation.

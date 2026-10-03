@@ -3,7 +3,7 @@ import { AuthRepository } from '../apps/api/src/features/auth/auth.repository';
 import { AuthService } from '../apps/api/src/features/auth/auth.service';
 import { GoogleService } from '../apps/api/src/features/auth/google.service';
 import { PasswordService } from '../apps/api/src/features/auth/password.service';
-import { RateLimitService } from '../apps/api/src/features/auth/rate-limit.service';
+import { tokenHash } from '../apps/api/src/features/auth/cookies';
 import { SessionRepository } from '../apps/api/src/features/auth/session.repository';
 import { WorkspacesRepository } from '../apps/api/src/features/workspaces/workspaces.repository';
 import { validateEnvironment } from '../apps/api/src/config';
@@ -112,39 +112,13 @@ describe('Atomic account onboarding and shared auth state', () => {
       { count: 0 },
     ]);
   });
-  it('multiple API instances enforce one shared rate limit under concurrency', async () => {
-    const instances = [new RateLimitService(source), new RateLimitService(source)];
-    const response = { setHeader: jest.fn() } as unknown as Parameters<
-      RateLimitService['enforce']
-    >[3];
-    const results = await Promise.allSettled(
-      Array.from({ length: 12 }, (_, index) =>
-        instances[index % 2]!.enforce('login', 'ip', 10, response),
-      ),
-    );
-    expect(results.filter((result) => result.status === 'fulfilled')).toHaveLength(10);
-    expect(results.filter((result) => result.status === 'rejected')).toHaveLength(2);
-    expect(response.setHeader).toHaveBeenCalledWith('Retry-After', expect.any(Number));
-  });
-  it('cleans expired auth state and resets expired counters', async () => {
-    await source.query(
-      "insert into auth_rate_limits values ('expired', 999, now()-interval '1 second')",
-    );
+  it('cleans expired OAuth state when starting a new Google flow', async () => {
     await source.query(
       "insert into google_auth_attempts values ('expired', 'nonce', 'verifier', now()-interval '1 second')",
     );
-    const limit = new RateLimitService(source);
-    await limit.enforce('login', 'ip', 1, { setHeader: jest.fn() } as unknown as Parameters<
-      RateLimitService['enforce']
-    >[3]);
-    await source.query("update auth_rate_limits set expires_at=now()-interval '1 second'");
-    await expect(
-      limit.enforce('login', 'ip', 1, { setHeader: jest.fn() } as unknown as Parameters<
-        RateLimitService['enforce']
-      >[3]),
-    ).resolves.toBeUndefined();
-    expect(await source.query('select count(*)::int as count from google_auth_attempts')).toEqual([
-      { count: 0 },
+    const { state } = await new GoogleService(source, config).start();
+    expect(await source.query('select state_hash from google_auth_attempts')).toEqual([
+      { state_hash: tokenHash(state) },
     ]);
   });
 });

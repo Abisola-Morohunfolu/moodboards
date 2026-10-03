@@ -23,10 +23,17 @@ services:
 
   redis:
     image: redis:7-alpine
-    # BullMQ loses jobs if Redis evicts keys under memory pressure.
-    command: ['redis-server', '--appendonly', 'yes', '--maxmemory-policy', 'noeviction']
+    # Eviction would reset rate limits or lose future BullMQ jobs.
+    command:
+      - redis-server
+      - --appendonly
+      - 'yes'
+      - --maxmemory
+      - '${REDIS_MAXMEMORY:-256mb}'
+      - --maxmemory-policy
+      - noeviction
     ports:
-      - '${REDIS_PORT:-6379}:6379'
+      - '127.0.0.1:${REDIS_PORT:-6379}:6379'
     volumes:
       - redis-data:/data
     healthcheck:
