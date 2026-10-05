@@ -28,3 +28,19 @@ services:
       interval: 1s
       timeout: 3s
       retries: 30
+  minio:
+    image: moodboard-minio-local:2025-10-15
+    build: ./docker/minio
+    command: ['server', '/data']
+    environment:
+      MINIO_ROOT_USER: moodboard_test
+      MINIO_ROOT_PASSWORD: moodboard_test_secret
+    ports:
+      - '127.0.0.1:${TEST_MINIO_PORT:-9002}:9000'
+    tmpfs:
+      - /data
+    healthcheck:
+      test: ['CMD', 'mc', 'ready', 'local']
+      interval: 1s
+      timeout: 3s
+      retries: 30

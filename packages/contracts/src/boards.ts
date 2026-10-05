@@ -149,7 +149,9 @@ export const boardCoreEventSchema = z.discriminatedUnion('type', [
     type: z.literal('item.created'),
     payload: z.strictObject({
       itemId: z.uuid(),
-      kind: z.literal('note'),
+      kind: z.enum(['note', 'image', 'link']),
+      assetId: z.uuid().optional(),
+      previewId: z.uuid().optional(),
       version: integerSchema.positive(),
     }),
   }),
@@ -170,6 +172,16 @@ export const boardCoreEventSchema = z.discriminatedUnion('type', [
     payload: z.strictObject({ itemId: z.uuid() }),
   }),
 ]);
+export const boardEventSchema = z.discriminatedUnion('type', [
+  ...boardCoreEventSchema.options,
+  ...(['asset.ready', 'asset.failed'] as const).map((type) =>
+    z.strictObject({ type: z.literal(type), payload: z.strictObject({ assetId: z.uuid() }) }),
+  ),
+  ...(['preview.ready', 'preview.failed'] as const).map((type) =>
+    z.strictObject({ type: z.literal(type), payload: z.strictObject({ previewId: z.uuid() }) }),
+  ),
+]);
+export type BoardEvent = z.infer<typeof boardEventSchema>;
 export type BoardCoreEvent = z.infer<typeof boardCoreEventSchema>;
 export type CreateBoardRequest = z.infer<typeof createBoardRequestSchema>;
 export type UpdateBoardRequest = z.infer<typeof updateBoardRequestSchema>;

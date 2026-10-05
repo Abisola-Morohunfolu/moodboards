@@ -1,9 +1,12 @@
-import { ConflictException, Injectable, NotFoundException } from '@nestjs/common';
-import { CreateNoteRequest, MoveNoteRequest, UpdateNoteRequest } from '@moodboard/contracts';
+import { createHash, randomUUID } from 'node:crypto';
+import { resourceLock } from '@moodboard/database';
+import { AssetsService } from '../assets/assets.service';
+import { ConflictException, Injectable, NotFoundException, Optional } from '@nestjs/common';
+import { CreateItemRequest, MoveNoteRequest, UpdateNoteRequest } from '@moodboard/contracts';
 import { AccessService } from '../access/access.service';
 import { SectionsRepository } from '../sections/sections.repository';
 import { BoardEventWriter } from '../../platform/events/board-event.writer';
-import { ItemsRepository, noteResponse } from './items.repository';
+import { ItemsRepository } from './items.repository';
 
 @Injectable()
 export class ItemsService {
@@ -12,6 +15,7 @@ export class ItemsService {
     private readonly repository: ItemsRepository,
     private readonly sections: SectionsRepository,
     private readonly events: BoardEventWriter,
+    @Optional() private readonly assets?: AssetsService,
   ) {}
   list(userId: string, boardId: string) {
     return this.access.withBoard(
@@ -20,36 +24,110 @@ export class ItemsService {
       'board.view',
       async (manager, access) => {
         const items = await this.repository.list(manager, boardId);
-        return items.map((item) => noteResponse(item, access.role, access.board.show_prices_to));
+        return this.repository.responses(manager, items, access.role, access.board.show_prices_to);
       },
       false,
     );
   }
-  create(userId: string, boardId: string, input: CreateNoteRequest) {
-    return this.access.withBoard(userId, boardId, 'item.create', async (manager, access) => {
-      // A retry ignores changed input, including a section that has since been deleted.
-      const existing = await this.repository.existing(manager, boardId, input.id);
-      if (existing) {
-        return {
-          item: noteResponse(existing, access.role, access.board.show_prices_to),
-          created: false,
-        };
-      }
-      await this.sections.assertOnBoard(manager, boardId, input.sectionId);
-      const { item, created } = await this.repository.create(
-        manager,
+  async create(userId: string, boardId: string, input: CreateItemRequest) {
+    if (input.kind === 'image') {
+      const retry = await this.access.withBoard(
+        userId,
         boardId,
-        access.participantId!,
-        input,
+        'item.create',
+        async (manager, access) => {
+          const item = await this.repository.existing(manager, boardId, input.id);
+          return item
+            ? {
+                item: await this.repository.response(
+                  manager,
+                  item,
+                  access.role,
+                  access.board.show_prices_to,
+                ),
+                created: false,
+              }
+            : null;
+        },
+        false,
       );
-      if (created) {
-        await this.events.append(manager, boardId, access.participantId!, {
-          type: 'item.created',
-          payload: { itemId: item.id, kind: 'note', version: item.version },
-        });
+      if (retry) {
+        return retry;
       }
-      return { item: noteResponse(item, access.role, access.board.show_prices_to), created };
-    });
+      if (!this.assets) {
+        throw new Error('Assets service missing');
+      }
+      await this.assets.assertUploaded(userId, boardId, input.assetId);
+    }
+    const hash = input.kind === 'link' ? createHash('sha256').update(input.url).digest() : null;
+    return this.access.withBoard(
+      userId,
+      boardId,
+      'item.create',
+      async (manager, access) => {
+        // A retry ignores changed input, including a section that has since been deleted.
+        const existing = await this.repository.existing(manager, boardId, input.id);
+        if (existing) {
+          return {
+            item: await this.repository.response(
+              manager,
+              existing,
+              access.role,
+              access.board.show_prices_to,
+            ),
+            created: false,
+          };
+        }
+        await this.sections.assertOnBoard(manager, boardId, input.sectionId);
+        let previewId: string | null = null;
+        if (input.kind === 'image') {
+          const asset = await this.assets!.load(manager, boardId, input.assetId);
+          if (asset.status === 'failed') {
+            throw new ConflictException('Asset processing failed');
+          }
+        }
+        if (input.kind === 'link') {
+          await manager.query(
+            'insert into link_previews (id,url,url_hash) values ($1,$2,$3) on conflict (url_hash) do nothing',
+            [randomUUID(), input.url, hash],
+          );
+          const [preview] = await manager.query('select id from link_previews where url_hash=$1', [
+            hash,
+          ]);
+          previewId = preview.id;
+        }
+        const { item, created } = await this.repository.create(
+          manager,
+          boardId,
+          access.participantId!,
+          input,
+          previewId,
+        );
+        if (created) {
+          await this.events.append(manager, boardId, access.participantId!, {
+            type: 'item.created',
+            payload: {
+              itemId: item.id,
+              kind: input.kind,
+              version: item.version,
+              ...(item.asset_id ? { assetId: item.asset_id } : {}),
+              ...(previewId ? { previewId } : {}),
+            },
+          });
+        }
+        return {
+          item: await this.repository.response(
+            manager,
+            item,
+            access.role,
+            access.board.show_prices_to,
+          ),
+          created,
+        };
+      },
+      true,
+      hash ? (manager) => resourceLock(manager, `preview:${hash.toString('hex')}`) : undefined,
+    );
   }
   async update(userId: string, itemId: string, input: UpdateNoteRequest) {
     const boardId = await this.repository.boardId(itemId);
@@ -63,14 +141,24 @@ export class ItemsService {
         throw new ConflictException({
           statusCode: 409,
           message: 'Item version conflict',
-          currentItem: noteResponse(current, access.role, access.board.show_prices_to),
+          currentItem: await this.repository.response(
+            manager,
+            current,
+            access.role,
+            access.board.show_prices_to,
+          ),
         });
       }
       await this.events.append(manager, boardId, access.participantId!, {
         type: 'item.updated',
         payload: { itemId, version: item.version, changedFields },
       });
-      return noteResponse(item, access.role, access.board.show_prices_to);
+      return await this.repository.response(
+        manager,
+        item,
+        access.role,
+        access.board.show_prices_to,
+      );
     });
   }
   async move(userId: string, itemId: string, input: MoveNoteRequest) {
@@ -86,7 +174,12 @@ export class ItemsService {
         type: 'item.moved',
         payload: { itemId, changedFields },
       });
-      return noteResponse(item, access.role, access.board.show_prices_to);
+      return await this.repository.response(
+        manager,
+        item,
+        access.role,
+        access.board.show_prices_to,
+      );
     });
   }
   async delete(userId: string, itemId: string) {

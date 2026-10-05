@@ -1,4 +1,5 @@
 import { Module } from '@nestjs/common';
+import { AssetsModule } from '../assets/assets.module';
 import { AccessModule } from '../access/access.module';
 import { EventsModule } from '../../platform/events/events.module';
 import { SectionsModule } from '../sections/sections.module';
@@ -7,7 +8,7 @@ import { ItemsRepository } from './items.repository';
 import { ItemsService } from './items.service';
 
 @Module({
-  imports: [AccessModule, EventsModule, SectionsModule],
+  imports: [AssetsModule, AccessModule, EventsModule, SectionsModule],
   controllers: [BoardItemsController, ItemsController],
   providers: [ItemsRepository, ItemsService],
 })

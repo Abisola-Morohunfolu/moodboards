@@ -42,42 +42,6 @@ services:
       timeout: 3s
       retries: 10
 
-  minio:
-    image: minio/minio
-    command: ['server', '/data', '--console-address', ':9001']
-    environment:
-      MINIO_ROOT_USER: ${S3_ACCESS_KEY:-moodboard}
-      MINIO_ROOT_PASSWORD: ${S3_SECRET_KEY:-moodboard-local-secret}
-    ports:
-      - '${MINIO_PORT:-9000}:9000'
-      - '${MINIO_CONSOLE_PORT:-9001}:9001'
-    volumes:
-      - minio-data:/data
-    healthcheck:
-      test: ['CMD', 'mc', 'ready', 'local']
-      interval: 5s
-      timeout: 3s
-      retries: 10
-
-  minio-setup:
-    image: minio/mc
-    depends_on:
-      minio:
-        condition: service_healthy
-    environment:
-      S3_ACCESS_KEY: ${S3_ACCESS_KEY:-moodboard}
-      S3_SECRET_KEY: ${S3_SECRET_KEY:-moodboard-local-secret}
-      S3_BUCKET: ${S3_BUCKET:-moodboard-assets}
-    # Objects stay private: the API serves them through 5-minute signed URLs.
-    entrypoint:
-      - /bin/sh
-      - -c
-      - |
-        mc alias set local http://minio:9000 "$$S3_ACCESS_KEY" "$$S3_SECRET_KEY" &&
-        mc mb --ignore-existing "local/$$S3_BUCKET" &&
-        mc anonymous set none "local/$$S3_BUCKET"
-    restart: 'no'
-
   mailpit:
     image: axllent/mailpit
     ports:
@@ -101,4 +65,3 @@ volumes:
   postgres-data:
   postgres-migrations-data:
   redis-data:
-  minio-data:

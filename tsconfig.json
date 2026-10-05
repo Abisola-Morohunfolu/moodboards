@@ -5,8 +5,14 @@
     "types": ["node", "jest"],
     "paths": {
       "@moodboard/contracts": ["./packages/contracts/src"],
-      "@moodboard/database": ["./packages/database/src"]
+      "@moodboard/database": ["./packages/database/src"],
+      "@moodboard/storage": ["./packages/storage/src"]
     }
   },
-  "include": ["apps/api/src/**/*.ts", "packages/*/src/**/*.ts", "tests/**/*.ts"]
+  "include": [
+    "apps/api/src/**/*.ts",
+    "packages/*/src/**/*.ts",
+    "tests/**/*.ts",
+    "apps/worker/src/**/*.ts"
+  ]
 }

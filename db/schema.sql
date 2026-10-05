@@ -264,6 +264,8 @@ create table board_event_deliveries (
   last_error      text,
   done_at         timestamptz,
   failed_at       timestamptz,
+  lease_token     uuid,
+  lease_until     timestamptz,
   primary key (event_id, target)
 );
 create index board_event_deliveries_due on board_event_deliveries (next_attempt_at)

@@ -92,8 +92,8 @@ contracts, cookie policy, Google setup, and failure behavior.
 
 Work unit 3 implements the section routes and note creation, listing, content
 editing, movement, and soft deletion. Creation retries return 200 with the
-existing same-board note, including a deleted tombstone; first creation returns
-201. Media, copying, and export endpoints below remain planned.
+existing same-board item, including a deleted tombstone; first creation returns
+201. Work unit 4 adds image/link items and media endpoints; copying and export remain planned.
 
 | Method | Path | Needs | Notes |
 |--------|------|-------|-------|
@@ -144,3 +144,11 @@ Connect to `/ws?board=:id&after=:seq`. The gateway resolves the role on connect,
 | Server to client | Every `board_events` row, redacted for the role. Events the role may not see arrive as `redacted` with only their `board_seq` | |
 | Server to client | `presence.update` | |
 | Server to client | `session.ended` before a disconnect for lost access | |
+
+## Implemented media details
+
+[Work unit 4](15-backend-media-workers.md) implements image/link creation, shared
+processing metadata, presigned PUT reservations, and signed original/thumbnail
+reads. The upload cap is uniform and configurable until billing entitlements
+arrive. Sources remain immutable; ready images alone can receive signed GET URLs.
+No live publishing, replay, or WebSocket routes are implemented in this unit.

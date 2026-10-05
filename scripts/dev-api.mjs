@@ -33,7 +33,7 @@ function start(args) {
   });
 }
 
-for (const path of ['packages/contracts', 'packages/database', 'apps/api']) {
+for (const path of ['packages/contracts', 'packages/database', 'packages/storage', 'apps/api']) {
   start([
     resolve(root, 'node_modules/typescript/bin/tsc'),
     '-p',

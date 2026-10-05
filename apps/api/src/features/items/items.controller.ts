@@ -12,10 +12,10 @@ import {
 } from '@nestjs/common';
 import type { Response } from 'express';
 import {
-  CreateNoteRequest,
+  CreateItemRequest,
   MoveNoteRequest,
   UpdateNoteRequest,
-  createNoteRequestSchema,
+  createItemRequestSchema,
   moveNoteRequestSchema,
   updateNoteRequestSchema,
 } from '@moodboard/contracts';
@@ -34,7 +34,7 @@ export class BoardItemsController {
   async create(
     @CurrentUser() user: AuthPrincipal,
     @Param('id', new ParseUUIDPipe()) id: string,
-    @Body(new SchemaPipe(createNoteRequestSchema)) input: CreateNoteRequest,
+    @Body(new SchemaPipe(createItemRequestSchema)) input: CreateItemRequest,
     @Res({ passthrough: true }) response: Response,
   ) {
     const result = await this.items.create(user.userId, id, input);

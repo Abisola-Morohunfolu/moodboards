@@ -23,17 +23,19 @@ A shared mood board that turns inspiration into an agreed plan. Planners and des
 | [docs/12-backend-foundation.md](docs/12-backend-foundation.md) | Backend foundation and test gates |
 | [docs/13-backend-accounts-workspaces.md](docs/13-backend-accounts-workspaces.md) | Accounts, cookie sessions, Google login, and workspaces |
 | [docs/14-backend-board-core.md](docs/14-backend-board-core.md) | Blank boards, sections, notes, permissions, and atomic event writes |
+| [docs/15-backend-media-workers.md](docs/15-backend-media-workers.md) | Image uploads, shared link previews, durable jobs, and media maintenance |
 
 ## Local development
 
 Use Node.js 24 and pnpm 10.33.0. The backend includes account authentication,
 workspace onboarding, blank canvas boards, sections, and note items, with shared
-database and contract packages. The worker and web app do not have code yet.
+database and contract packages. The worker processes media jobs; the web app does not have code yet.
 
 Start Docker. Then run these commands from the project root:
 
 ```bash
 cp .env.example .env
+# Configure the four R2_* fields for media; see docs/15-backend-media-workers.md.
 pnpm install --frozen-lockfile
 docker compose up -d --wait postgres redis
 pnpm db:migrate
@@ -43,8 +45,8 @@ pnpm dev:api
 | Service | Address | Use |
 |---------|---------|-----|
 | Postgres 15 | `localhost:5432` | Uses explicit TypeORM migrations |
-| Redis 7 | `127.0.0.1:6379` | Authentication rate limits; future pub/sub and BullMQ, with eviction off |
-| MinIO | `localhost:9000`, console `localhost:9001` | S3-compatible storage, private `moodboard-assets` bucket |
+| Redis 7 | `127.0.0.1:6379` | Authentication rate limits and BullMQ jobs, with eviction off |
+| Cloudflare R2 | Managed cloud bucket | Private media storage; configure credentials before starting the worker |
 | Mailpit | SMTP `localhost:1025`, inbox `localhost:8025` | Catches every email |
 | Stripe CLI | opt-in: `docker compose --profile stripe up -d` | Forwards test webhooks to `localhost:3001/webhooks/stripe` |
 
@@ -57,7 +59,7 @@ The database now uses the `postgres-migrations-data` volume. The old
 `postgres-data` volume and its data remain available. Do not delete volumes to
 apply a schema change. Add a migration and run `pnpm db:migrate`.
 
-To start the other backing services, run `docker compose up -d --wait`.
+To start the other backing services, run `docker compose up -d --wait mailpit`.
 
 ## Account onboarding
 
@@ -84,13 +86,15 @@ Account linking, password reset, and local email verification are deferred.
 
 ## Backend tests
 
-Use separate Postgres and Redis test services. Both have temporary storage.
+Use separate Postgres, Redis, and MinIO test services with temporary storage.
 These commands do not use the development stores:
 
 ```bash
 pnpm db:test:start
 export TEST_DATABASE_URL=postgres://moodboard_test:moodboard_test@127.0.0.1:5433/moodboard_test
 export TEST_REDIS_URL=redis://127.0.0.1:6380/15
+export TEST_STORAGE_ENDPOINT=http://127.0.0.1:9002
+export TEST_STORAGE_BUCKET=moodboard-test-assets
 pnpm check
 pnpm db:test:stop
 ```
@@ -123,8 +127,16 @@ and their events commit together. Same-board item retries return the original
 item, including deleted tombstones, without another event. See
 [work unit 3](docs/14-backend-board-core.md) for all routes and limits.
 
-Only blank boards and notes are implemented. Clients, starter kits, media,
-sharing controls, board archiving, plan limits, workers, and realtime follow.
+Blank boards support notes, image uploads, and link previews. Start the media
+worker with `pnpm dev:worker` after applying migrations. JPEG, PNG, and WebP
+uploads are limited to 10 MiB by default. The worker validates files, generates
+thumbnails and palettes, fetches previews, and maintains media storage and events.
+See [work unit 4](docs/15-backend-media-workers.md) for the HTTP flow, diagrams,
+configuration, R2 setup, and worker health routes. MinIO is used only by automated
+tests and is built from pinned upstream source releases.
+
+Clients, starter kits, sharing controls, board archiving, plan entitlements,
+realtime, and the frontend follow.
 
 ## Code style
 
@@ -152,12 +164,13 @@ The formatter skips generated files, Markdown, and the reference SQL schema.
 - `apps/api` — NestJS HTTP API and WebSocket gateway
 - `apps/worker` — event dispatcher and BullMQ workers
 - `packages/contracts` — shared transport and event contracts
-- `packages/database` — shared database client and transaction primitives
+- `packages/database` — shared database client and transaction/event primitives
+- `packages/storage` — shared private R2 adapter
 - `packages/kits` — data-only kit definitions
 - `packages/modules` — module implementations, introduced when Phase 2 needs them
 - `packages/ui` — shared presentational UI
 
-Only the API, contracts, and database packages have a build setup. See
+The API, worker, contracts, database, and storage packages have a build setup. See
 [docs/11-project-structure.md](docs/11-project-structure.md) before adding code or
 moving a responsibility between packages.
 
