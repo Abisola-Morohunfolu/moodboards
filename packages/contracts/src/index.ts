@@ -57,3 +57,5 @@ export type CreateWorkspaceRequest = z.infer<typeof createWorkspaceRequestSchema
 export type UserResponse = z.infer<typeof userResponseSchema>;
 export type WorkspaceResponse = z.infer<typeof workspaceResponseSchema>;
 export type AccountResponse = z.infer<typeof accountResponseSchema>;
+
+export * from './media';

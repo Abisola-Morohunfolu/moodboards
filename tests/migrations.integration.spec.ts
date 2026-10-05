@@ -3,6 +3,7 @@ import { resolve } from 'node:path';
 import { DataSource, MigrationInterface, QueryRunner } from 'typeorm';
 import { InitialSchema1790985600000 } from '../apps/api/src/database/migrations/1790985600000-initial-schema';
 import { AccountAuth1791072000000 } from '../apps/api/src/database/migrations/1791072000000-account-auth';
+import { MediaDeliveryLeases1791158400000 } from '../apps/api/src/database/migrations/1791158400000-media-delivery-leases';
 import { migrationsApplied } from '../apps/api/src/database/migration-status';
 import { testDataSource } from './database';
 
@@ -57,11 +58,12 @@ describe('Cumulative schema migrations', () => {
     }
   });
 
-  it('creates the full schema and records both migrations', async () => {
+  it('creates the full schema and records all migrations', async () => {
     expect(await migrationsApplied(source)).toBe(true);
     expect(await source.query('select name from migrations order by id')).toEqual([
       { name: 'InitialSchema1790985600000' },
       { name: 'AccountAuth1791072000000' },
+      { name: 'MediaDeliveryLeases1791158400000' },
     ]);
     expect(
       await source.query(
@@ -71,6 +73,7 @@ describe('Cumulative schema migrations', () => {
   });
   it('upgrades and reverts authentication without replacing legacy accounts', async () => {
     const id = '00000000-0000-4000-8000-000000000001';
+    await source.undoLastMigration();
     await source.undoLastMigration();
     try {
       expect(await source.query("select to_regclass('public.auth_sessions') as name")).toEqual([
@@ -85,6 +88,7 @@ describe('Cumulative schema migrations', () => {
       expect(
         await source.query('select password_hash, google_subject from users where id=$1', [id]),
       ).toEqual([{ password_hash: null, google_subject: null }]);
+      await source.undoLastMigration();
       await source.undoLastMigration();
       expect(await source.query('select email, display_name from users where id=$1', [id])).toEqual(
         [{ email: 'legacy@example.com', display_name: 'Legacy' }],
@@ -117,6 +121,7 @@ describe('Cumulative schema migrations', () => {
   it('reverts the application objects and can run again', async () => {
     await source.undoLastMigration();
     await source.undoLastMigration();
+    await source.undoLastMigration();
     try {
       expect(await migrationsApplied(source)).toBe(false);
       expect(
@@ -135,6 +140,7 @@ describe('Cumulative schema migrations', () => {
       migrations: [
         InitialSchema1790985600000,
         AccountAuth1791072000000,
+        MediaDeliveryLeases1791158400000,
         FailingMigration1791072000001,
       ],
     });
@@ -147,6 +153,7 @@ describe('Cumulative schema migrations', () => {
       expect(await failing.query('select name from migrations order by id')).toEqual([
         { name: 'InitialSchema1790985600000' },
         { name: 'AccountAuth1791072000000' },
+        { name: 'MediaDeliveryLeases1791158400000' },
       ]);
     } finally {
       await failing.destroy();

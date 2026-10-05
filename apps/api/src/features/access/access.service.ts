@@ -16,8 +16,12 @@ export class AccessService {
     permission: BoardPermission,
     work: (manager: EntityManager, access: BoardAccess) => Promise<T>,
     ensureActor = true,
+    beforeLock?: (manager: EntityManager) => Promise<void>,
   ): Promise<T> {
     return withTransaction(this.source, async (manager) => {
+      if (beforeLock) {
+        await beforeLock(manager);
+      }
       const access = await this.repository.load(manager, userId, boardId, true);
       if (!hasBoardPermission(access.role, permission)) {
         throw new ForbiddenException('Board permission required');

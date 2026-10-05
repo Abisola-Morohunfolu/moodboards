@@ -69,4 +69,21 @@ describe('API configuration', () => {
       validateEnvironment({ ...valid, REDIS_URL: 'rediss://user:secret@redis.example:6380/1' }),
     ).toMatchObject({ REDIS_URL: 'rediss://user:secret@redis.example:6380/1' });
   });
+  it('accepts complete R2 credentials and rejects partial configuration safely', () => {
+    const r2 = {
+      R2_ACCOUNT_ID: 'a'.repeat(32),
+      R2_BUCKET: 'moodboard-assets',
+      R2_ACCESS_KEY_ID: 'access-key',
+      R2_SECRET_ACCESS_KEY: 'private-secret',
+    };
+    expect(validateEnvironment({ ...valid, ...r2 })).toMatchObject(r2);
+    for (const key of Object.keys(r2)) {
+      expect(() => validateEnvironment({ ...valid, ...r2, [key]: '' })).toThrow(
+        /^Invalid API configuration: R2_BUCKET$/,
+      );
+    }
+    expect(() => validateEnvironment({ ...valid, R2_SECRET_ACCESS_KEY: 'private-secret' })).toThrow(
+      /^Invalid API configuration: R2_BUCKET$/,
+    );
+  });
 });

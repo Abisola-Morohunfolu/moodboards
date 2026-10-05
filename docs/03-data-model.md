@@ -123,7 +123,7 @@ Items, decisions, and events point at participant rows, so people are anonymized
 - Handlers must be idempotent. Module tables that a handler inserts into carry a natural key where needed (`checklist_tasks.source_key`).
 - Dispatched events older than 30 days are deleted nightly. Clients that fall further behind reload the board.
 - Event types: `board.created`, `board.updated`, `board.upgraded`, `section.created`, `section.updated`, `section.deleted`, `item.created`, `item.moved`, `item.updated`, `item.deleted`, `item.decided`, `approval.state_changed`, `preview.ready`, `asset.ready`, `participant.joined`, `access.changed`, `module.enabled`, `module.disabled`, `budget.changed`.
-- Work unit 3 emits board, section, and note mutation events with typed metadata-only payloads. It persists the outbox but defers fan-out, Redis publishing, replay, and pruning; dispatched timestamps remain unset.
+- Work unit 3 emits board, section, and note mutation events. Work unit 4 adds media events, queue fan-out, leased delivery acknowledgements, and pruning. Redis live publishing and replay remain deferred.
 
 ### Modules
 
@@ -143,3 +143,18 @@ Items, decisions, and events point at participant rows, so people are anonymized
 - Copying a board copies sections, enabled modules, chosen items, and an asset row for each copied image. It never copies participants, decisions, scores, votes, or reactions.
 - A copy keeps `price_cents` only when the caller's role on the source board is at or above `show_prices_to`. Otherwise the copied item has no price.
 - Each copied item writes `item.created` on the target board, so a copy of an image that is still processing gets its own `process-image` job.
+
+## Media processing additions
+
+`board_event_deliveries.lease_token` and `lease_until` support bounded queue
+handoffs outside database transactions. A queue delivery's `done_at` means
+confirmed enqueue, rather than processing completion. Worker result events
+allow null participant attribution.
+
+Pending assets point at staging keys; ready assets point at verified immutable
+original keys. Thumbnails use separate WebP keys. Attempts that lose the atomic
+completion race leave unreferenced objects for the 24-hour cleanup grace.
+Preview fetch generations use the existing expiry timestamp. Shared completion
+updates metadata and appends events under the resource-before-board lock order.
+Failure event types are `asset.failed` and `preview.failed`; failed preview
+refreshes preserve previously collected fields.

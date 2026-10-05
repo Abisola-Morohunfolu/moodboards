@@ -9,7 +9,7 @@
 | Background work | BullMQ workers on Redis |
 | Database | Postgres |
 | Pub/sub and queues | Redis |
-| File storage | S3-compatible (Cloudflare R2 or S3) |
+| File storage | Cloudflare R2 Standard (private bucket) |
 | Payments | Stripe Checkout, Billing, webhooks |
 | Hosting | Fly.io or Railway, at least 2 API instances |
 
@@ -25,10 +25,10 @@ flowchart LR
   P -- HTTPS --> API["NestJS API"]
   C -- HTTPS --> API
   X -- "quick save to Unsorted" --> API
-  P -- "upload with presigned URL" --> S3[("Object storage")]
+  P -- "upload with presigned URL" --> R2[("Cloudflare R2")]
   API -- "one transaction: change and board_events" --> PG[("Postgres")]
   API -- "after commit: live update" --> R[("Redis pub/sub")]
-  API -- presign --> S3
+  API -- presign --> R2
   ST["Stripe"] -- webhook --> API
   PG -- "LISTEN/NOTIFY, poll as fallback" --> D["Dispatchers"]
   D -- "event handlers" --> M["Enabled modules"]
@@ -37,7 +37,7 @@ flowchart LR
   Q --> W1["Link preview worker, egress-filtered"]
   Q --> W2["Image worker"]
   W1 --> PG
-  W2 --> S3
+  W2 --> R2
   W2 --> PG
   D -- "module and worker events" --> R
   P -. "drag moves, cursors" .-> GW["WebSocket gateway"]
@@ -51,8 +51,9 @@ flowchart LR
 
 This section describes the complete target architecture. [Backend work unit
 3](14-backend-board-core.md) implements transactional board/section/note writes,
-event sequence allocation, and the existing notification trigger. Redis event
-publishing, dispatchers, workers, and WebSockets remain later work units.
+event sequence allocation, and the existing notification trigger. [Work unit 4](15-backend-media-workers.md) adds the media dispatcher, BullMQ
+processors, private storage adapter, and maintenance. Redis event publishing
+and WebSockets remain later work units.
 
 1. The API checks the caller's board role, changes the core tables, increments `boards.event_seq`, and inserts one `board_events` row with that `board_seq`, all in one transaction. The increment locks the board row, so a board's events commit in `board_seq` order.
 2. After commit, the API publishes the event to the board's Redis channel. Open browsers update at once, without waiting for the dispatcher.
@@ -110,3 +111,16 @@ A transaction that writes events on several boards (`preview.ready`, a workspace
 - **No role, no board:** return 404, not 403.
 - **Payments:** grant Stripe entitlements only from webhooks, never from the redirect back to the app. Record the event and apply the grant in one transaction.
 - **Item data:** validate `items.attributes` against the item kind's schema on every write.
+
+## Implemented media dispatch boundary
+
+Queue deliveries use additive lease token/expiry columns. Redis enqueue runs
+outside the claim transaction; acknowledgement requires the same unexpired
+lease. Queue confirmation finishes delivery, while media processors own their
+separate retry budget and transactional completion events. Entity/generation
+job IDs plus a minute reconciliation scan recover interrupted handoffs. The
+full module dispatch and realtime architecture above remains the target.
+
+Preview attachment/completion acquire the same resource advisory lock before
+board locks; multi-board completion locks boards in ID order. Image validation
+promotes buffered bytes into fresh immutable keys, never signing staging reads.

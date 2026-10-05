@@ -79,7 +79,7 @@ sequenceDiagram
   autonumber
   actor U as Designer
   participant API
-  participant S3 as Object storage
+  participant R2 as Cloudflare R2
   participant DB as Postgres
   participant R as Redis
   participant D as Dispatcher
@@ -88,12 +88,12 @@ sequenceDiagram
   API->>API: check bytes against the plan's upload cap
   API->>DB: insert assets, status pending
   API-->>U: PUT URL signed for that type and size, and the asset id
-  U->>S3: PUT original file
+  U->>R2: PUT original file
   U->>API: POST /boards/:id/items kind=image, assetId
   API->>DB: insert items and board_events item.created
   API->>R: after commit, publish item.created
   D->>W: deliver to process-image
-  W->>S3: read original, write thumbnail
+  W->>R2: read original, write thumbnail
   W->>DB: assets ready with palette, board_events asset.ready
   W->>R: publish asset.ready
 ```

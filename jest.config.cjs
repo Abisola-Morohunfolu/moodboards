@@ -4,6 +4,7 @@ const base = {
   transform: { '^.+\\.ts$': ['ts-jest', { tsconfig: 'tsconfig.json' }] },
   moduleNameMapper: {
     '^@moodboard/contracts$': '<rootDir>/packages/contracts/src',
+    '^@moodboard/storage$': '<rootDir>/packages/storage/src',
     '^@moodboard/database$': '<rootDir>/packages/database/src',
   },
   setupFiles: ['<rootDir>/tests/setup.ts'],

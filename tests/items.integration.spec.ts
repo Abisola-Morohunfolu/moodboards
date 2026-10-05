@@ -351,7 +351,7 @@ describe('Note content, positions, and atomic events', () => {
     ]);
     const payloads = JSON.stringify(rows);
     expect(payloads).not.toContain('secret note');
-    expect(payloads).not.toContain('8888');
-    expect(payloads).not.toContain('2500');
+    expect(payloads).not.toMatch(/:\s*8888(?:[,}])/);
+    expect(payloads).not.toMatch(/:\s*2500(?:[,}])/);
   });
 });

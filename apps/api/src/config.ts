@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { r2Config } from '@moodboard/storage';
 
 const databaseUrl = z
   .string()
@@ -27,6 +28,11 @@ const originSchema = z
 const environmentSchema = z
   .object({
     DATABASE_URL: databaseUrl,
+    R2_ACCOUNT_ID: z.string().optional(),
+    R2_BUCKET: z.string().optional(),
+    R2_ACCESS_KEY_ID: z.string().optional(),
+    R2_SECRET_ACCESS_KEY: z.string().optional(),
+    MEDIA_UPLOAD_MAX_BYTES: z.coerce.number().int().positive().max(2147483647).optional(),
     REDIS_URL: z
       .string()
       .url()
@@ -75,6 +81,15 @@ const environmentSchema = z
       .optional(),
   })
   .superRefine((config, context) => {
+    try {
+      r2Config(config);
+    } catch {
+      context.addIssue({
+        code: 'custom',
+        path: ['R2_BUCKET'],
+        message: 'Configure all R2 fields',
+      });
+    }
     const google = [
       config.GOOGLE_CLIENT_ID,
       config.GOOGLE_CLIENT_SECRET,

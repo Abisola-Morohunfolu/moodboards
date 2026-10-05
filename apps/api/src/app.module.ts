@@ -3,6 +3,8 @@ import { DynamicModule, Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
 import { validateEnvironment } from './config';
 import { AuthModule } from './features/auth/auth.module';
+import { StorageModule } from './platform/storage/storage.module';
+import { AssetsModule } from './features/assets/assets.module';
 import { HealthModule } from './features/health/health.module';
 import { BoardsModule } from './features/boards/boards.module';
 import { ItemsModule } from './features/items/items.module';
@@ -26,6 +28,8 @@ export class AppModule {
         HealthModule,
         AuthModule,
         BoardsModule,
+        StorageModule,
+        AssetsModule,
         ItemsModule,
       ],
     };

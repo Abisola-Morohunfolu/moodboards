@@ -136,3 +136,41 @@ database state.
 **D29. The preview worker fetches through an egress filter.** It fetches any URL a user pastes, so it refuses private, loopback, link-local, and metadata addresses, checks every redirect, and caps time and size.
 
 **D39. Authentication rate limits use Redis; sessions stay in Postgres.** Short-lived counters expire automatically and keep repeated authentication writes off the application database. Atomic increments share limits across API instances. Redis failures reject new authentication attempts with 503 after a bounded check; existing sessions and logout remain available through Postgres. Keeping sessions in Postgres preserves transactional signup and active-user validation without introducing cross-store session writes or cache invalidation.
+
+## Media workers
+
+**D40. Upload capabilities target staging keys.** Validated bytes are promoted to
+fresh worker-owned keys, so reusing a PUT URL cannot alter a ready asset. Read
+URLs require ready status and current board access. JPEG, PNG, and WebP share a
+configurable 10 MiB cap until paid entitlements exist.
+
+**D41. Queue handoffs have leases, and processing has its own retry budget.**
+Thirty-second delivery leases permit Redis I/O outside database transactions.
+Queue confirmation marks delivery done; BullMQ handles processing retries.
+Entity/generation IDs, database completion idempotency, and reconciliation recover
+crashes without duplicate result events.
+
+**D42. Preview attachment and completion lock the resource before boards.**
+A shared advisory lock avoids missing a concurrently attached board. A worker
+then locks affected boards in ID order and commits metadata and result events
+together. Failure retains last-known fields for a usable manual card.
+
+**D43. Media maintenance is introduced with media storage.** Daily refresh,
+orphan cleanup, and dispatched event pruning avoid indefinitely accumulating
+failed uploads and stale previews. Soft-deleted items retain their assets.
+
+**D44. Test MinIO is built from pinned upstream sources.** The former community
+registry images are unavailable. A source-built server/CLI image keeps real S3
+integration tests reproducible without cloud credentials.
+
+
+**D45. Application media storage uses Cloudflare R2 Standard only.** The API and
+worker derive the R2 endpoint from the account ID and use region `auto` internally.
+Only account ID, bucket, access key ID, and secret access key are configured; there
+are no generic storage-provider settings or compatibility aliases. The AWS SDK
+remains an implementation detail for R2 object operations and signed URLs. Private
+buckets and five-minute signed access preserve board authorization. Standard
+storage includes a free monthly allowance, with overages billed and no egress
+charge. Disposable MinIO is test-only and is injected as a client; tests reject
+remote endpoints and never use application R2 credentials. This is a fresh setup
+without object migration.

@@ -23,9 +23,13 @@
     "test:unit": "jest --config jest.config.cjs --selectProjects unit --runInBand",
     "test:integration": "jest --config jest.config.cjs --selectProjects integration --runInBand",
     "test:e2e": "jest --config jest.config.cjs --selectProjects e2e --runInBand",
-    "check": "pnpm format:check && pnpm lint && pnpm build && pnpm typecheck && pnpm test:unit && pnpm test:integration && pnpm test:e2e"
+    "check": "pnpm format:check && pnpm lint && pnpm build && pnpm typecheck && pnpm test:unit && pnpm test:integration && pnpm test:e2e",
+    "dev:worker": "pnpm build && pnpm --filter @moodboard/worker dev",
+    "start:worker": "pnpm --filter @moodboard/worker start",
+    "storage:smoke:r2": "pnpm build && node --env-file=.env scripts/smoke-r2.mjs"
   },
   "devDependencies": {
+    "@aws-sdk/client-s3": "3.1146.0",
     "@eslint/js": "9.39.1",
     "@nestjs/common": "11.2.7",
     "@nestjs/testing": "11.2.7",
@@ -38,6 +42,7 @@
     "jest": "30.5.2",
     "pg": "8.16.3",
     "prettier": "3.9.9",
+    "sharp": "0.35.5",
     "supertest": "7.1.4",
     "ts-jest": "29.4.14",
     "typeorm": "0.3.31",

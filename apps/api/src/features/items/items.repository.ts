@@ -1,7 +1,8 @@
 import { ConflictException, Injectable, NotFoundException } from '@nestjs/common';
 import {
   BoardRole,
-  CreateNoteRequest,
+  CreateItemRequest,
+  ItemResponse,
   MoveNoteRequest,
   NoteResponse,
   UpdateNoteRequest,
@@ -15,7 +16,9 @@ export interface NoteRecord {
   board_id: string;
   section_id: string | null;
   created_by: string;
-  kind: string;
+  kind: 'note' | 'image' | 'link';
+  asset_id: string | null;
+  link_preview_id: string | null;
   title: string | null;
   note: string | null;
   x: number | null;
@@ -28,6 +31,11 @@ export interface NoteRecord {
   created_at: Date;
   updated_at: Date;
 }
+type AssetMetadata = Extract<ItemResponse, { kind: 'image' }>['asset'];
+type PreviewMetadata = Omit<
+  Extract<ItemResponse, { kind: 'link' }>['preview'],
+  'fetchedAt' | 'expiresAt'
+> & { fetchedAt: Date | null; expiresAt: Date | null };
 export function noteResponse(
   item: NoteRecord,
   role: BoardRole,
@@ -68,14 +76,14 @@ export class ItemsRepository {
   }
   list(manager: EntityManager, boardId: string): Promise<NoteRecord[]> {
     return manager.query(
-      `select * from items where board_id=$1 and deleted_at is null and kind='note'
+      `select * from items where board_id=$1 and deleted_at is null
       order by z_order collate "C", id`,
       [boardId],
     );
   }
   async get(manager: EntityManager, boardId: string, itemId: string): Promise<NoteRecord> {
     const rows: NoteRecord[] = await manager.query(
-      "select * from items where board_id=$1 and id=$2 and kind='note'",
+      'select * from items where board_id=$1 and id=$2',
       [boardId, itemId],
     );
     if (!rows[0]) {
@@ -93,7 +101,7 @@ export class ItemsRepository {
     if (!item) {
       return null;
     }
-    if (item.board_id !== boardId.toLowerCase() || item.kind !== 'note') {
+    if (item.board_id !== boardId.toLowerCase()) {
       throw new ConflictException('Item id already in use');
     }
     return item;
@@ -102,12 +110,13 @@ export class ItemsRepository {
     manager: EntityManager,
     boardId: string,
     participantId: string,
-    input: CreateNoteRequest,
+    input: CreateItemRequest,
+    previewId: string | null = null,
   ) {
     const rows: NoteRecord[] = await manager.query(
       `insert into items
-      (id, board_id, section_id, created_by, kind, title, note, x, y, z_order, price_cents, quantity)
-      values ($1,$2,$3,$4,'note',$5,$6,$7,$8,$9,$10,$11)
+      (id, board_id, section_id, created_by, kind, title, note, x, y, z_order, price_cents, quantity, asset_id, link_preview_id)
+      values ($1,$2,$3,$4,$12,$5,$6,$7,$8,$9,$10,$11,$13,$14)
       on conflict (id) do nothing returning *`,
       [
         input.id,
@@ -121,12 +130,78 @@ export class ItemsRepository {
         input.zOrder,
         input.priceCents ?? null,
         input.quantity ?? 1,
+        input.kind,
+        input.kind === 'image' ? input.assetId : null,
+        previewId,
       ],
     );
     if (rows[0]) {
       return { item: rows[0], created: true };
     }
     return { item: (await this.existing(manager, boardId, input.id))!, created: false };
+  }
+  async response(
+    manager: EntityManager,
+    item: NoteRecord,
+    role: BoardRole,
+    showPricesTo: BoardRole,
+  ): Promise<ItemResponse> {
+    return (await this.responses(manager, [item], role, showPricesTo))[0]!;
+  }
+  async responses(
+    manager: EntityManager,
+    items: NoteRecord[],
+    role: BoardRole,
+    showPricesTo: BoardRole,
+  ): Promise<ItemResponse[]> {
+    const assetIds = [
+      ...new Set(items.flatMap((item) => (item.kind === 'image' ? [item.asset_id] : []))),
+    ];
+    const previewIds = [
+      ...new Set(items.flatMap((item) => (item.kind === 'link' ? [item.link_preview_id] : []))),
+    ];
+    const assets: (AssetMetadata & { board_id: string })[] = assetIds.length
+      ? await manager.query(
+          'select id,board_id,status,mime_type as mime,bytes,width,height,palette from assets where id=any($1::uuid[])',
+          [assetIds],
+        )
+      : [];
+    const previews: PreviewMetadata[] = previewIds.length
+      ? await manager.query(
+          'select id,url,status,title,description,image_url as "imageUrl",site_name as "siteName",fetched_at as "fetchedAt",expires_at as "expiresAt" from link_previews where id=any($1::uuid[])',
+          [previewIds],
+        )
+      : [];
+    const assetsById = new Map(
+      assets.map(({ board_id, ...asset }) => [`${board_id}:${asset.id}`, asset]),
+    );
+    const previewsById = new Map(previews.map((preview) => [preview.id, preview]));
+    return items.map((item): ItemResponse => {
+      const base = noteResponse(item, role, showPricesTo);
+      if (item.kind === 'note') {
+        return base;
+      }
+      if (item.kind === 'image') {
+        const asset = assetsById.get(`${item.board_id}:${item.asset_id}`);
+        if (!asset) {
+          throw new Error('Item asset missing');
+        }
+        return { ...base, kind: 'image', asset };
+      }
+      const preview = previewsById.get(item.link_preview_id!);
+      if (!preview) {
+        throw new Error('Item preview missing');
+      }
+      return {
+        ...base,
+        kind: 'link',
+        preview: {
+          ...preview,
+          fetchedAt: preview.fetchedAt?.toISOString() ?? null,
+          expiresAt: preview.expiresAt?.toISOString() ?? null,
+        },
+      };
+    });
   }
   async update(manager: EntityManager, boardId: string, itemId: string, input: UpdateNoteRequest) {
     const { version, ...changes } = input;
@@ -138,7 +213,7 @@ export class ItemsRepository {
     const rows: NoteRecord[] = await manager.query(
       `with updated as (update items
       set ${patch.assignments}, version=version+1, updated_at=now()
-      where board_id=$1 and id=$2 and version=$3 and deleted_at is null and kind='note'
+      where board_id=$1 and id=$2 and version=$3 and deleted_at is null
       returning *) select * from updated`,
       [boardId, itemId, version, ...patch.values],
     );
@@ -152,7 +227,7 @@ export class ItemsRepository {
     );
     const rows: NoteRecord[] = await manager.query(
       `with moved as (update items set ${patch.assignments}, updated_at=now()
-      where board_id=$1 and id=$2 and deleted_at is null and kind='note' returning *) select * from moved`,
+      where board_id=$1 and id=$2 and deleted_at is null returning *) select * from moved`,
       [boardId, itemId, ...patch.values],
     );
     if (!rows[0]) {
@@ -163,7 +238,7 @@ export class ItemsRepository {
   async delete(manager: EntityManager, boardId: string, itemId: string): Promise<boolean> {
     const rows: { id: string }[] = await manager.query(
       `with deleted as (update items set deleted_at=now(), updated_at=now()
-      where board_id=$1 and id=$2 and deleted_at is null and kind='note' returning id) select id from deleted`,
+      where board_id=$1 and id=$2 and deleted_at is null returning id) select id from deleted`,
       [boardId, itemId],
     );
     return rows.length > 0;
