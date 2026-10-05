@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, ConflictException, NotFoundException } from '@nestjs/common';
 import {
   CreateBoardRequest,
   UpdateBoardRequest,
@@ -12,6 +12,8 @@ import { AccessRepository, boardResponse } from '../access/access.repository';
 import { BoardEventWriter } from '../../platform/events/board-event.writer';
 import { SectionsRepository } from '../sections/sections.repository';
 import { BoardsRepository } from './boards.repository';
+import { BoardPrincipal } from '../access/contact-access';
+import { lockBusinessClient } from '../clients/clients.repository';
 
 @Injectable()
 export class BoardsService {
@@ -37,27 +39,65 @@ export class BoardsService {
   list(userId: string, workspaceId?: string) {
     return this.access.list(userId, workspaceId);
   }
-  get(userId: string, boardId: string): Promise<BoardDetailResponse> {
-    return this.access.withBoard(userId, boardId, 'board.view', async (manager, access) => ({
-      board: boardResponse(access.board),
-      sections: await this.sections.list(manager, boardId),
-      modules: [],
-      role: access.role,
-    }));
+  get(userId: BoardPrincipal, boardId: string): Promise<BoardDetailResponse> {
+    return this.access.withBoard(
+      userId,
+      boardId,
+      'board.view',
+      async (manager, access) => ({
+        board: boardResponse(access.board),
+        sections: await this.sections.list(manager, boardId),
+        modules: [],
+        role: access.role,
+      }),
+      typeof userId === 'string',
+    );
   }
   update(
     userId: string,
     boardId: string,
     input: UpdateBoardRequest,
   ): Promise<BoardWithRoleResponse> {
-    return this.access.withBoard(userId, boardId, 'board.share', async (manager, access) => {
-      const changedFields = await this.repository.update(manager, boardId, input);
-      await this.events.append(manager, boardId, access.participantId!, {
-        type: 'board.updated',
-        payload: { boardId, changedFields },
-      });
-      const updated = await this.accessRepository.load(manager, userId, boardId);
-      return { ...boardResponse(updated.board), role: updated.role };
-    });
+    return this.access.withBoard(
+      userId,
+      boardId,
+      'board.share',
+      async (manager, access) => {
+        const patch = { ...input };
+        if (patch.clientId !== undefined) {
+          if (access.board.client_id && patch.clientId !== access.board.client_id) {
+            throw new ConflictException('Board client cannot be changed');
+          }
+          if (patch.clientId === access.board.client_id) {
+            delete patch.clientId;
+          } else if (patch.clientId) {
+            const client = await lockBusinessClient(
+              manager,
+              userId,
+              patch.clientId,
+              access.board.workspace_id,
+            );
+            if (client.workspaceId !== access.board.workspace_id) {
+              throw new NotFoundException('Client not found');
+            }
+          }
+        }
+        const changedFields = await this.repository.update(manager, boardId, patch);
+        if (changedFields.length) {
+          await this.events.append(manager, boardId, access.participantId!, {
+            type: 'board.updated',
+            payload: { boardId, changedFields },
+          });
+        }
+        const updated = await this.accessRepository.load(manager, userId, boardId);
+        return { ...boardResponse(updated.board), role: updated.role };
+      },
+      true,
+      input.clientId
+        ? async (manager) => {
+            await lockBusinessClient(manager, userId, input.clientId!, undefined, false);
+          }
+        : undefined,
+    );
   }
 }

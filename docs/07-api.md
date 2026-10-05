@@ -50,12 +50,12 @@ contracts, cookie policy, Google setup, and failure behavior.
 | GET | `/workspaces/:id/members` | workspace member | |
 | PATCH | `/workspaces/:id/members/:userId` | workspace owner | Change role. Writes `access.changed` on every board in the workspace |
 | DELETE | `/workspaces/:id/members/:userId` | workspace owner | In a personal workspace, hands over or moves each board they solely own, per the leaving rules in access control. Then revokes their remaining participant rows with `revoked_on_leave`. Writes `access.changed` on every affected board |
-| GET, POST | `/workspaces/:id/clients` | business owner or staff | |
+| GET, POST | `/workspaces/:id/clients` | business owner or staff | Implemented; list supports `includeArchived=true` |
 | DELETE | `/clients/:id` | business owner or staff | Archives |
-| POST | `/clients/:id/contacts` | business owner or staff | Returns the contact's link |
+| GET, POST | `/clients/:id/contacts` | business owner or staff | Lists active contacts or creates one; links come from board assignments |
 | DELETE | `/contacts/:id` | business owner or staff | Ends the link, revokes participant rows, clears name and email |
-| GET | `/contacts/:id/link` | business owner or staff | Current link, rebuilt from `link_version` |
-| POST | `/contacts/:id/new-link` | business owner or staff | Increments `link_version`, ending the old link |
+| GET | `/boards/:id/participants/:pid/link` | `board.share` | Current board-specific contact link |
+| POST | `/boards/:id/participants/:pid/new-link` | `board.share` | Rotates this assignment only; empty JSON body |
 
 ## Invites
 
@@ -82,10 +82,10 @@ contracts, cookie policy, Google setup, and failure behavior.
 | GET | `/boards/:id/access` | `board.share` | Participants, invites, general access, current share link |
 | PATCH | `/boards/:id/access` | `board.share` | `generalAccess`, `workspaceDefaultRole`, `linkRole`, `showPricesTo`, `locked`. Writes `access.changed` |
 | POST | `/boards/:id/access/new-link` | `board.share` | Increments `link_version`, ending the old link. Writes `access.changed` |
-| POST | `/boards/:id/participants` | `board.share` | `contactId`, `role` of `viewer` or `approver`. The contact must belong to the board's client. Writes `participant.joined` |
+| GET, POST | `/boards/:id/participants` | `board.share` | Contact participants; assignment accepts `contactId`, viewer/approver `role`, optional `expiresAt`. Contact must belong to the board's client |
 | PATCH | `/boards/:id/participants/:pid` | `board.share` | Role, `expiresAt`. 409 when it would leave a personal board with no owner, now or when `expiresAt` passes. Writes `access.changed` |
 | DELETE | `/boards/:id/participants/:pid` | `board.share` | Sets `revoked_at` and clears `revoked_on_leave`, so a later rejoin keeps the removal. 409 when it would leave a personal board with no owner. Writes `access.changed` |
-| GET | `/share/:token` | none | Token is `<id>.<hmac>`. A share link starts a session for that board. A client link starts a contact session and lists the boards the contact was added to |
+| GET | `/share/:token` | none | Implemented contact token is `<participantId>.<signature>`; starts a session for exactly one assigned board. Generic sharing remains planned |
 | GET | `/boards/:id/events?after=:seq` | `board.view` | Events with `board_seq` above the client's last applied seq, redacted for the role. Hidden events come back as `redacted` placeholders, so the range has no gaps. 410 when any seq in the range has been deleted |
 
 ## Sections and items
@@ -152,3 +152,13 @@ processing metadata, presigned PUT reservations, and signed original/thumbnail
 reads. The upload cap is uniform and configurable until billing entitlements
 arrive. Sources remain immutable; ready images alone can receive signed GET URLs.
 No live publishing, replay, or WebSocket routes are implemented in this unit.
+
+## Implemented client access
+
+[Work unit 5](16-backend-client-access.md) adds business client/contact management,
+once-only `clientId` association on board creation/update, contact participants,
+and board-specific links. Contact reads use `/client/board`, `/client/board/items`,
+and `/client/assets/:id/url`; logout is `POST /client/logout` with `{}`. These
+routes require only the separate contact cookie and never use account privileges.
+Client-wide links, account-participant changes, and general sharing controls are
+not implemented. Board responses include nullable `clientId`.

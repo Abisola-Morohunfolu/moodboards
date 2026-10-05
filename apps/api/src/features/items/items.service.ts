@@ -7,6 +7,7 @@ import { AccessService } from '../access/access.service';
 import { SectionsRepository } from '../sections/sections.repository';
 import { BoardEventWriter } from '../../platform/events/board-event.writer';
 import { ItemsRepository } from './items.repository';
+import { BoardPrincipal } from '../access/contact-access';
 
 @Injectable()
 export class ItemsService {
@@ -17,7 +18,7 @@ export class ItemsService {
     private readonly events: BoardEventWriter,
     @Optional() private readonly assets?: AssetsService,
   ) {}
-  list(userId: string, boardId: string) {
+  list(userId: BoardPrincipal, boardId: string) {
     return this.access.withBoard(
       userId,
       boardId,

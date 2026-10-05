@@ -3,6 +3,7 @@ import { DataSource, EntityManager } from 'typeorm';
 import { withTransaction } from '@moodboard/database';
 import { AccessRepository, BoardAccess } from './access.repository';
 import { BoardPermission, hasBoardPermission } from './board-role';
+import { BoardPrincipal } from './contact-access';
 
 @Injectable()
 export class AccessService {
@@ -11,7 +12,7 @@ export class AccessService {
     private readonly repository: AccessRepository,
   ) {}
   withBoard<T>(
-    userId: string,
+    userId: BoardPrincipal,
     boardId: string,
     permission: BoardPermission,
     work: (manager: EntityManager, access: BoardAccess) => Promise<T>,
@@ -22,11 +23,14 @@ export class AccessService {
       if (beforeLock) {
         await beforeLock(manager);
       }
-      const access = await this.repository.load(manager, userId, boardId, true);
+      const access =
+        typeof userId === 'string'
+          ? await this.repository.load(manager, userId, boardId, true)
+          : await this.repository.loadContact(manager, userId, boardId);
       if (!hasBoardPermission(access.role, permission)) {
         throw new ForbiddenException('Board permission required');
       }
-      if (ensureActor && access.participantId === null) {
+      if (ensureActor && access.participantId === null && typeof userId === 'string') {
         access.participantId = await this.repository.ensureParticipant(manager, userId, boardId);
       }
       return work(manager, access);

@@ -10,5 +10,6 @@ import { BoardsService } from './boards.service';
   imports: [AccessModule, EventsModule, SectionsModule],
   controllers: [BoardsController, WorkspaceBoardsController],
   providers: [BoardsRepository, BoardsService],
+  exports: [BoardsService],
 })
 export class BoardsModule {}

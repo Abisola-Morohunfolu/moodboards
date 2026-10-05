@@ -1,10 +1,10 @@
 # Data model
 
-31 tables in five groups. The full DDL is in [../db/schema.sql](../db/schema.sql).
+32 tables in five groups. The full DDL is in [../db/schema.sql](../db/schema.sql).
 
 | Group | Tables |
 |-------|--------|
-| Authentication | `auth_sessions`, `google_auth_attempts`, `auth_rate_limits` |
+| Authentication | `auth_sessions`, `contact_sessions`, `google_auth_attempts`, `auth_rate_limits` |
 | People and access | `users`, `workspaces`, `workspace_members`, `invites`, `clients`, `client_contacts`, `board_participants` |
 | Boards and content | `boards`, `board_modules`, `sections`, `items`, `assets`, `link_previews`, `board_events`, `board_event_deliveries` |
 | Billing | `subscriptions`, `purchases`, `stripe_events` |
@@ -30,6 +30,9 @@ erDiagram
     BOARD_PARTICIPANTS }o--o| USERS : "signed in as"
     BOARD_PARTICIPANTS }o--o| CLIENT_CONTACTS : "added as"
     USERS |o--o{ BOARD_PARTICIPANTS : invited
+    BOARD_PARTICIPANTS ||--o{ CONTACT_SESSIONS : authenticates
+    CLIENT_CONTACTS ||--o{ CONTACT_SESSIONS : uses
+    BOARDS ||--o{ CONTACT_SESSIONS : scopes
 
     BOARDS ||--o{ BOARD_MODULES : enables
     BOARDS ||--o{ SECTIONS : "split into"
@@ -83,7 +86,7 @@ Column lists live in `db/schema.sql`. The animated map shows them per table: htt
 - `board_participants` is the one identity on a board. A row holds `user_id` (signed in), `contact_id` (client link), or both. Items, decisions, scores, votes, and reactions all point at a participant, so no module handles "user or contact" itself.
 - A row with `role` null records a person who got in through general access or the business owner rule. The API creates it the first time a signed-in person opens the board. It grants nothing, so restricting the board still removes them. Creating it writes no `participant.joined` and counts toward no participant-based rule, so opening a board has no side effects.
 - Plan limits on people per board count rows with a set `role` that are not revoked or expired. Role-null rows, anonymous link visitors, and the business owner rule never count.
-- A client contact who signs up gets `user_id` set on their contact row, so the link and the account share one identity. If that user already has a row on the board, the two rows stay separate.
+- Planned account linking: a client contact who signs up gets `user_id` set on their contact row, so the link and the account share one identity. If that user already has a row on the board, the two rows stay separate.
 - Workspaces are either `business` or `personal`. Sign-up creates a personal workspace. The word "workspace" never appears in a personal account's UI.
 
 ### Deletion
@@ -112,8 +115,9 @@ Items, decisions, and events point at participant rows, so people are anonymized
 
 ### Share and client links
 
-- Links are not stored. The token is `<id>.HMAC(secret, id:link_version)`, rebuilt on demand, so the Share dialog can always show the current link.
-- `boards.link_version` and `client_contacts.link_version` start at 1. Getting a new link increments the version, which ends the old link.
+- Board-specific contact links use `<participantId>.<signature>`, signing `contact-board:<participantId>:<linkVersion>`. `board_participants.link_version` controls only that assignment. Links are rebuilt on demand and are never stored.
+- Contact sessions store opaque token hashes, participant/contact/board IDs, the issued assignment generation, a signing-secret fingerprint, and expiry. Reads recheck current access. Rotation, revocation, and restoration end prior credentials. Removing a contact ends all its assignments.
+- Generic board links remain planned and use `boards.link_version`. The legacy `client_contacts.link_version` column is retained but does not authenticate the implemented board-specific links.
 
 ### Events
 

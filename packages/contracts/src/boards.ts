@@ -25,11 +25,20 @@ export const createBoardRequestSchema = z.strictObject({
   title: titleSchema,
   kitId: z.literal('blank').optional(),
   currency: currencySchema.optional(),
+  clientId: z
+    .uuid()
+    .transform((v) => v.toLowerCase())
+    .optional(),
 });
 export const updateBoardRequestSchema = z
   .strictObject({
     title: titleSchema.optional(),
     currency: currencySchema.optional(),
+    clientId: z
+      .uuid()
+      .transform((v) => v.toLowerCase())
+      .nullable()
+      .optional(),
   })
   .refine(changed);
 export const createSectionRequestSchema = z.strictObject({
@@ -67,6 +76,7 @@ export const moveNoteRequestSchema = z.strictObject(position).refine(changed);
 export const boardResponseSchema = z.strictObject({
   id: z.uuid(),
   workspaceId: z.uuid(),
+  clientId: z.uuid().nullable(),
   kitId: z.string(),
   title: z.string(),
   layout: z.enum(['canvas', 'grid']),
@@ -120,7 +130,7 @@ export const noteConflictResponseSchema = z.strictObject({
   currentItem: noteResponseSchema,
 });
 
-const boardFields = z.array(z.enum(['title', 'currency'])).min(1);
+const boardFields = z.array(z.enum(['title', 'currency', 'clientId'])).min(1);
 const sectionFields = z.array(z.enum(['name', 'position'])).min(1);
 const itemFields = z.array(z.enum(['title', 'note', 'priceCents', 'quantity'])).min(1);
 const positionFields = z.array(z.enum(['x', 'y', 'zOrder', 'sectionId'])).min(1);
@@ -174,6 +184,17 @@ export const boardCoreEventSchema = z.discriminatedUnion('type', [
 ]);
 export const boardEventSchema = z.discriminatedUnion('type', [
   ...boardCoreEventSchema.options,
+  z.strictObject({
+    type: z.literal('participant.joined'),
+    payload: z.strictObject({ participantId: z.uuid() }),
+  }),
+  z.strictObject({
+    type: z.literal('access.changed'),
+    payload: z.strictObject({
+      participantId: z.uuid(),
+      changedFields: z.array(z.enum(['role', 'expiresAt', 'revokedAt', 'linkVersion'])).min(1),
+    }),
+  }),
   ...(['asset.ready', 'asset.failed'] as const).map((type) =>
     z.strictObject({ type: z.literal(type), payload: z.strictObject({ assetId: z.uuid() }) }),
   ),

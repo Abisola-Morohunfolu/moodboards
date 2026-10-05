@@ -123,7 +123,7 @@ database state.
 
 **D37. Leaving a personal workspace takes your private boards with you.** The household owner has no automatic access (D17), so a revoked owner row would leave a board nobody can run. A board they solely own goes to another household member with editor or higher, or to the household owner when it is shared with the whole workspace. Otherwise it moves to the leaver's own personal workspace, with its open invites revoked so none carries a role into that workspace. Outsiders never inherit a household board, and a personal board can never lose its last owner.
 
-**D36. Client contacts reach only boards they were added to.** One contact link covers every board for that client, so opening it must not grant access by itself. A planner adds the contact to each board, which keeps drafts for the same client hidden. Like a share link, a contact link can be forwarded, so its sessions are capped at approver (D15).
+**D36. Client contact links open one explicitly assigned board.** Each contact–board participant has its own versioned link. A session is bound to that assignment, so opening one link cannot discover another board. Rotating a link ends only that assignment; contact removal ends all of them. Bearer sessions are capped at approver (D15).
 
 **D38. Archived boards are read-only.** The free plan caps active boards, so an archived board that still took edits would make the cap meaningless. Archiving caps every role at viewer, like a lock, and unarchiving checks the plan's limit.
 
@@ -174,3 +174,19 @@ storage includes a free monthly allowance, with overages billed and no egress
 charge. Disposable MinIO is test-only and is injected as a client; tests reject
 remote endpoints and never use application R2 credentials. This is a fresh setup
 without object migration.
+
+## Client access implementation
+
+**D48. Isolate client reads from account sessions.** The `/client` cookie and routes
+select only the contact–board session, even when a planner is signed in. This
+lets a planner preview the contact experience without granting planner privileges.
+
+**D49. Associate a board with a client once.** Work unit 5 allows creation-time
+association or attachment to an unassigned board. Reassignment/detachment is
+deferred so client access cannot silently carry into another relationship.
+Archiving a client preserves existing access; explicit revocation ends it.
+
+**D50. Contact credentials remain durable and current.** Session tokens are hashed
+in Postgres and include assignment generation plus signing-secret fingerprint.
+Requests recheck removal, revocation, expiry, and board/client ownership under
+parent-before-board locks. Restoring a grant rotates its generation.

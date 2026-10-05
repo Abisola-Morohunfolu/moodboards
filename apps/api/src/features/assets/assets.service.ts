@@ -10,6 +10,7 @@ import { PresignRequest } from '@moodboard/contracts';
 import { DataSource, EntityManager } from 'typeorm';
 import { AccessService } from '../access/access.service';
 import { MediaStorage } from '../../platform/storage/storage.module';
+import { BoardPrincipal } from '../access/contact-access';
 export interface AssetRecord {
   id: string;
   board_id: string;
@@ -96,7 +97,7 @@ export class AssetsService {
     }
     return asset;
   }
-  async url(userId: string, id: string, variant: 'original' | 'thumbnail') {
+  async url(userId: BoardPrincipal, id: string, variant: 'original' | 'thumbnail') {
     const rows: { board_id: string }[] = await this.source.query(
       'select board_id from assets where id=$1',
       [id],

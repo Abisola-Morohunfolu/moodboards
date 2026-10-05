@@ -109,6 +109,7 @@ export class Maintenance {
     console.info(JSON.stringify({ operation: 'event-prune', events: count }));
   }
   async daily(now = new Date()) {
+    await this.source.query('delete from contact_sessions where expires_at<=$1', [now]);
     await this.refresh();
     await this.cleanup(now);
     await this.prune(now);

@@ -11,5 +11,6 @@ import { ItemsService } from './items.service';
   imports: [AssetsModule, AccessModule, EventsModule, SectionsModule],
   controllers: [BoardItemsController, ItemsController],
   providers: [ItemsRepository, ItemsService],
+  exports: [ItemsService],
 })
 export class ItemsModule {}

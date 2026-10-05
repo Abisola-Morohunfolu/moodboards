@@ -3,10 +3,12 @@ import { Injectable, NotFoundException } from '@nestjs/common';
 import { BoardResponse, BoardRole } from '@moodboard/contracts';
 import { EntityManager } from 'typeorm';
 import { resolveAccountBoardRole } from './board-role';
+import { ContactPrincipal, lockContactParents, assertContactSession } from './contact-access';
 
 export interface BoardRecord {
   id: string;
   workspace_id: string;
+  client_id: string | null;
   kit_id: string;
   title: string;
   layout: 'canvas' | 'grid';
@@ -60,6 +62,7 @@ export function boardResponse(board: BoardRecord): BoardResponse {
   return {
     id: board.id,
     workspaceId: board.workspace_id,
+    clientId: board.client_id,
     kitId: board.kit_id,
     title: board.title,
     layout: board.layout,
@@ -77,6 +80,34 @@ export function boardResponse(board: BoardRecord): BoardResponse {
 
 @Injectable()
 export class AccessRepository {
+  async loadContact(
+    manager: EntityManager,
+    principal: ContactPrincipal,
+    boardId: string,
+  ): Promise<BoardAccess> {
+    if (boardId.toLowerCase() !== principal.boardId) {
+      throw new NotFoundException('Board not found');
+    }
+    await lockContactParents(manager, principal.contactId);
+    await manager.query('select id from boards where id=$1 for update', [boardId]);
+    await assertContactSession(manager, principal);
+    const [board] = await manager.query<BoardRecord[]>(
+      `select b.*, w.type as workspace_type,
+      null as workspace_role, p.id as participant_id, p.role as participant_role,
+      p.revoked_at as participant_revoked_at, p.expires_at as participant_expires_at
+      from boards b join workspaces w on w.id=b.workspace_id
+      join board_participants p on p.board_id=b.id where b.id=$1 and p.id=$2`,
+      [boardId, principal.participantId],
+    );
+    if (!board) {
+      throw new NotFoundException('Board not found');
+    }
+    const role =
+      board.locked_at || board.archived_at || board.participant_role === 'viewer'
+        ? 'viewer'
+        : 'approver';
+    return { board, role, participantId: principal.participantId };
+  }
   async load(
     manager: EntityManager,
     userId: string,
