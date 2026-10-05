@@ -24,12 +24,15 @@ A shared mood board that turns inspiration into an agreed plan. Planners and des
 | [docs/13-backend-accounts-workspaces.md](docs/13-backend-accounts-workspaces.md) | Accounts, cookie sessions, Google login, and workspaces |
 | [docs/14-backend-board-core.md](docs/14-backend-board-core.md) | Blank boards, sections, notes, permissions, and atomic event writes |
 | [docs/15-backend-media-workers.md](docs/15-backend-media-workers.md) | Image uploads, shared link previews, durable jobs, and media maintenance |
+| [docs/16-backend-client-access.md](docs/16-backend-client-access.md) | Clients, board-specific contact links, isolated client sessions, and revocation |
 
 ## Local development
 
 Use Node.js 24 and pnpm 10.33.0. The backend includes account authentication,
 workspace onboarding, blank canvas boards, sections, and note items, with shared
-database and contract packages. The worker processes media jobs; the web app does not have code yet.
+database and contract packages. Business clients and contacts have board-specific
+links and isolated read sessions. The worker processes media jobs; the web app
+does not have code yet.
 
 Start Docker. Then run these commands from the project root:
 

@@ -2,6 +2,7 @@ import type { Request, Response } from 'express';
 import {
   clearCookie,
   FLOW_COOKIE,
+  CONTACT_COOKIE,
   randomToken,
   readCookie,
   SESSION_COOKIE,
@@ -42,6 +43,17 @@ describe('Authentication cookies', () => {
       FLOW_COOKIE,
       'value',
       expect.objectContaining({ path: '/auth/google', maxAge: 600000 }),
+    );
+    writeCookie(response, CONTACT_COOKIE, 'value', true, 604800);
+    expect(cookie).toHaveBeenLastCalledWith(
+      CONTACT_COOKIE,
+      'value',
+      expect.objectContaining({ path: '/client', secure: true, httpOnly: true, sameSite: 'lax' }),
+    );
+    clearCookie(response, CONTACT_COOKIE, true);
+    expect(clear).toHaveBeenLastCalledWith(
+      CONTACT_COOKIE,
+      expect.objectContaining({ path: '/client', secure: true }),
     );
   });
 });

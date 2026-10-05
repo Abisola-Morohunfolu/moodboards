@@ -54,6 +54,11 @@ const environmentSchema = z
     API_PORT: z.coerce.number().int().min(1).max(65535).default(3001),
     DB_POOL_MAX: z.coerce.number().int().min(1).max(100).default(10),
     NODE_ENV: z.enum(['development', 'test', 'production']).default('development'),
+    LINK_SECRET: z.preprocess(
+      (v) => (v === '' ? undefined : v),
+      z.string().min(32).max(512).optional(),
+    ),
+    PUBLIC_API_URL: z.preprocess((v) => (v === '' ? undefined : v), originSchema.optional()),
     AUTH_ALLOWED_ORIGINS: z.preprocess(
       (value) =>
         typeof value === 'string' ? value.split(',').map((origin) => origin.trim()) : value,
@@ -103,6 +108,9 @@ const environmentSchema = z
       });
     }
     if (config.NODE_ENV === 'production') {
+      if (config.PUBLIC_API_URL && !config.PUBLIC_API_URL.startsWith('https://')) {
+        context.addIssue({ code: 'custom', path: ['PUBLIC_API_URL'], message: 'HTTPS required' });
+      }
       if (config.AUTH_ALLOWED_ORIGINS.some((origin) => !origin.startsWith('https://'))) {
         context.addIssue({
           code: 'custom',

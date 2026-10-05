@@ -1,0 +1,27 @@
+sequenceDiagram
+    actor Planner
+    actor Contact
+    participant API as NestJS API
+    participant DB as Postgres
+    participant Storage as Private storage
+    Planner->>API: Assign contact to Board A
+    API->>DB: Commit participant and event
+    Planner->>API: Get assignment link
+    API-->>Planner: Link for contact and Board A
+    Planner-->>Contact: Share link manually
+    Contact->>API: GET /share/:token
+    API->>DB: Validate contact, assignment and link version
+    API->>DB: Create session bound to Board A
+    API-->>Contact: Contact cookie and Board A
+    Contact->>API: GET /client/board/items
+    API->>DB: Recheck session and assignment
+    API-->>Contact: Filtered Board A items
+    Contact->>API: Request image URL
+    API->>DB: Verify asset belongs to Board A
+    API-->>Contact: Five-minute signed URL
+    Contact->>Storage: Download image
+    Planner->>API: Rotate Board A assignment link
+    API->>DB: Increment version and commit access event
+    Contact->>API: Next client request
+    API-->>Contact: Session rejected
+    Note over API,DB: Other board assignments remain valid

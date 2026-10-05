@@ -9,6 +9,9 @@ import { HealthModule } from './features/health/health.module';
 import { BoardsModule } from './features/boards/boards.module';
 import { ItemsModule } from './features/items/items.module';
 import { DatabaseModule } from './database/database.module';
+import { ClientsModule } from './features/clients/clients.module';
+import { ParticipantsModule } from './features/participants/participants.module';
+import { ClientViewModule } from './features/client-view/client-view.module';
 
 @Module({})
 export class AppModule {
@@ -31,6 +34,9 @@ export class AppModule {
         StorageModule,
         AssetsModule,
         ItemsModule,
+        ClientsModule,
+        ParticipantsModule,
+        ClientViewModule,
       ],
     };
   }

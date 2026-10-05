@@ -56,3 +56,12 @@ bodies require JSON; origin checks include bodyless DELETE.
 See [work unit 3](../../docs/14-backend-board-core.md) for contracts, the transaction
 diagram, and tests. Events remain undispatched until a later work unit; there
 are no WebSockets, media jobs, starter kits, or archive/unarchive routes yet.
+
+## Clients and board-specific contact links
+
+[Work unit 5](../../docs/16-backend-client-access.md) implements client/contact
+management, once-only board association, and contact participant links. Configure
+`LINK_SECRET` and `PUBLIC_API_URL` after applying migrations. `/share/:token`
+creates a board-bound session; `/client` reads select contact permissions through
+`@ContactOnly()` even when an account cookie is present. Rotation is per assignment;
+contact removal revokes every board. Email delivery and approvals remain later work.

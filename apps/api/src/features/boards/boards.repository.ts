@@ -3,10 +3,14 @@ import { Injectable, NotFoundException } from '@nestjs/common';
 import { CreateBoardRequest, UpdateBoardRequest } from '@moodboard/contracts';
 import { EntityManager } from 'typeorm';
 import { patchColumns } from '../../database/patch-columns';
+import { lockBusinessClient } from '../clients/clients.repository';
 
 @Injectable()
 export class BoardsRepository {
   async create(manager: EntityManager, userId: string, input: CreateBoardRequest) {
+    if (input.clientId) {
+      await lockBusinessClient(manager, userId, input.clientId, input.workspaceId);
+    }
     const membership: unknown[] = await manager.query(
       `select m.role from workspace_members m
       where m.workspace_id=$1 and m.user_id=$2 for key share`,
@@ -18,9 +22,16 @@ export class BoardsRepository {
     const boardId = randomUUID();
     const participantId = randomUUID();
     await manager.query(
-      `insert into boards (id, workspace_id, title, kit_id, layout, currency, created_by)
-      values ($1,$2,$3,'blank','canvas',$4,$5)`,
-      [boardId, input.workspaceId, input.title, input.currency ?? null, userId],
+      `insert into boards (id, workspace_id, title, kit_id, layout, currency, created_by, client_id)
+      values ($1,$2,$3,'blank','canvas',$4,$5,$6)`,
+      [
+        boardId,
+        input.workspaceId,
+        input.title,
+        input.currency ?? null,
+        userId,
+        input.clientId ?? null,
+      ],
     );
     await manager.query(
       `insert into board_participants (id, board_id, user_id, role)
@@ -30,7 +41,14 @@ export class BoardsRepository {
     return { boardId, participantId };
   }
   async update(manager: EntityManager, boardId: string, input: UpdateBoardRequest) {
-    const patch = patchColumns(input, { title: 'title', currency: 'currency' });
+    const patch = patchColumns(input, {
+      title: 'title',
+      currency: 'currency',
+      clientId: 'client_id',
+    });
+    if (!patch.changedFields.length) {
+      return [];
+    }
     await manager.query(`update boards set ${patch.assignments} where id=$1`, [
       boardId,
       ...patch.values,

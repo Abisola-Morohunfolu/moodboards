@@ -3,6 +3,7 @@ import { createHash, randomBytes } from 'node:crypto';
 
 export const SESSION_COOKIE = 'moodboard_session';
 export const FLOW_COOKIE = 'moodboard_google_flow';
+export const CONTACT_COOKIE = 'moodboard_contact';
 export const SESSION_SECONDS = 7 * 24 * 60 * 60;
 export function randomToken(): string {
   return randomBytes(32).toString('base64url');
@@ -30,7 +31,7 @@ export function writeCookie(
     httpOnly: true,
     sameSite: 'lax',
     secure: production,
-    path: name === FLOW_COOKIE ? '/auth/google' : '/',
+    path: name === FLOW_COOKIE ? '/auth/google' : name === CONTACT_COOKIE ? '/client' : '/',
     maxAge: seconds * 1000,
   });
 }
@@ -39,6 +40,6 @@ export function clearCookie(response: Response, name: string, production: boolea
     httpOnly: true,
     sameSite: 'lax',
     secure: production,
-    path: name === FLOW_COOKIE ? '/auth/google' : '/',
+    path: name === FLOW_COOKIE ? '/auth/google' : name === CONTACT_COOKIE ? '/client' : '/',
   });
 }

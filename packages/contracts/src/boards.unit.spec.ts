@@ -22,7 +22,7 @@ describe('Board core contracts', () => {
   });
   it('rejects unsupported kits, kinds, and fields', () => {
     expect(createBoardRequestSchema.safeParse({ ...board, kitId: 'events' }).success).toBe(false);
-    expect(createBoardRequestSchema.safeParse({ ...board, clientId: randomUUID() }).success).toBe(
+    expect(createBoardRequestSchema.safeParse({ ...board, clientId: 'invalid' }).success).toBe(
       false,
     );
     expect(createNoteRequestSchema.safeParse({ ...note, kind: 'image' }).success).toBe(false);

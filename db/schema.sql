@@ -61,8 +61,9 @@ create table clients (
   unique (workspace_id, id)
 );
 
--- Link token = <id>.HMAC(secret, id:link_version); bumping link_version ends the old link.
--- Removing a contact clears name and email and bumps link_version.
+-- Contact-wide link_version is retained for schema compatibility.
+-- Implemented board-specific links use board_participants.link_version.
+-- Removing a contact clears name/email and revokes every assignment.
 create table client_contacts (
   id           uuid primary key,
   client_id    uuid not null references clients(id) on delete cascade,
@@ -145,12 +146,29 @@ create table board_participants (
   -- A manual revoke or an accepted invite clears it.
   revoked_on_leave boolean not null default false,
   joined_at  timestamptz not null default now(),
+  link_version integer not null default 1,
+  constraint participant_link_positive check (link_version > 0),
   unique (board_id, id),
   constraint has_identity check (user_id is not null or contact_id is not null)
 );
 create unique index board_participants_user    on board_participants (board_id, user_id)    where user_id is not null;
 create unique index board_participants_contact on board_participants (board_id, contact_id) where contact_id is not null;
 create index board_participants_by_user on board_participants (user_id) where user_id is not null;
+
+create table contact_sessions (
+  token_hash text primary key,
+  participant_id uuid not null,
+  contact_id uuid not null references client_contacts(id),
+  board_id uuid not null references boards(id) on delete cascade,
+  link_version integer not null,
+  secret_fingerprint text not null,
+  created_at timestamptz not null default now(),
+  expires_at timestamptz not null,
+  foreign key (board_id, participant_id) references board_participants(board_id, id) on delete cascade
+);
+create index contact_sessions_expiry on contact_sessions(expires_at);
+create index contact_sessions_contact on contact_sessions(contact_id);
+create index contact_sessions_participant on contact_sessions(participant_id);
 
 create table board_modules (
   board_id  uuid not null references boards(id) on delete cascade,

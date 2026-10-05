@@ -11,9 +11,10 @@ import { RedisRateLimitStore } from './redis-rate-limit.store';
 import { RequestProtectionGuard } from './request-protection.guard';
 import { SessionAuthGuard } from './session-auth.guard';
 import { SessionRepository } from './session.repository';
+import { AccessModule } from '../access/access.module';
 
 @Module({
-  imports: [WorkspacesModule],
+  imports: [WorkspacesModule, AccessModule],
   controllers: [AuthController, AccountController],
   providers: [
     AuthRepository,
@@ -26,6 +27,6 @@ import { SessionRepository } from './session.repository';
     { provide: APP_GUARD, useClass: RequestProtectionGuard },
     { provide: APP_GUARD, useClass: SessionAuthGuard },
   ],
-  exports: [SessionRepository],
+  exports: [SessionRepository, RateLimitService],
 })
 export class AuthModule {}

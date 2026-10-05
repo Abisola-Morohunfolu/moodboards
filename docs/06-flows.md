@@ -197,11 +197,12 @@ sequenceDiagram
   participant CL as Checklist
   participant GW as WS gateway
   P->>API: POST /boards/:id/participants contactId, role=approver
+  P->>API: GET /boards/:id/participants/:pid/link
   API->>DB: check the contact belongs to the board's client
   API->>DB: insert board_participants with contact_id, board_events participant.joined
   C->>API: GET /share/:token
-  API->>DB: find client_contacts by id, check the HMAC
-  API-->>C: contact session, boards the contact was added to
+  API->>DB: check participant HMAC and live contact/board assignment
+  API-->>C: board-bound contact session and selected board
   C->>API: POST /boards/:id/modules/approvals/decisions itemId, status=approved
   API->>DB: upsert approval_states and lock it FOR UPDATE
   API->>DB: insert approval_decisions
@@ -217,7 +218,7 @@ sequenceDiagram
 
 `approval.state_changed` is written only when the core state changes. With the `all` rule, the first of two approvals writes `item.decided` only. The row lock means two approvals sent at once still end with the item approved.
 
-Opening the link creates no rows. A contact reaches only the boards a planner added them to, so draft boards for the same client stay hidden.
+Opening the link creates only a hashed authentication session; it creates no participant or membership rows. A contact reaches only the boards a planner added them to, so draft boards for the same client stay hidden.
 
 ## 8. Board Pass payment
 

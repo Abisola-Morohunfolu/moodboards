@@ -124,3 +124,12 @@ full module dispatch and realtime architecture above remains the target.
 Preview attachment/completion acquire the same resource advisory lock before
 board locks; multi-board completion locks boards in ID order. Image validation
 promotes buffered bytes into fresh immutable keys, never signing staging reads.
+
+## Implemented client access boundary
+
+[Work unit 5](16-backend-client-access.md) adds board-specific contact sessions and
+client/contact management. It reuses board, item, and asset serializers through
+a typed account/contact read context. Client views stay isolated from account
+cookies. Revocation transactions take client/contact locks before boards, and
+multi-board contact removal locks boards in ID order. New access events use the
+existing outbox; realtime delivery and approvals remain later work.

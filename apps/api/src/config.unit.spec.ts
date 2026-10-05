@@ -86,4 +86,39 @@ describe('API configuration', () => {
       /^Invalid API configuration: R2_BUCKET$/,
     );
   });
+  it('validates client-link configuration without exposing its secret', () => {
+    for (const secret of ['local-only-change-me', 'short', 'x'.repeat(513)]) {
+      expect(() => validateEnvironment({ ...valid, LINK_SECRET: secret })).toThrow(
+        'Invalid API configuration: LINK_SECRET',
+      );
+    }
+    expect(validateEnvironment({ ...valid, LINK_SECRET: '', PUBLIC_API_URL: '' })).toMatchObject({
+      LINK_SECRET: undefined,
+      PUBLIC_API_URL: undefined,
+    });
+    expect(
+      validateEnvironment({
+        ...valid,
+        LINK_SECRET: 'x'.repeat(64),
+        PUBLIC_API_URL: 'http://127.0.0.1:3001',
+      }),
+    ).toMatchObject({ PUBLIC_API_URL: 'http://127.0.0.1:3001' });
+    for (const url of [
+      'https://user:secret@example.com',
+      'https://example.com/share',
+      'https://example.com/',
+    ]) {
+      expect(() => validateEnvironment({ ...valid, PUBLIC_API_URL: url })).toThrow(
+        'Invalid API configuration: PUBLIC_API_URL',
+      );
+    }
+    expect(() =>
+      validateEnvironment({
+        ...valid,
+        NODE_ENV: 'production',
+        AUTH_ALLOWED_ORIGINS: ['https://app.example.com'],
+        PUBLIC_API_URL: 'http://api.example.com',
+      }),
+    ).toThrow('PUBLIC_API_URL');
+  });
 });

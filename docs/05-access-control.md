@@ -128,18 +128,27 @@ Accepting an invite upserts the person's row on the board. If a row already exis
 
 Rejoining a workspace clears every revocation in it that has `revoked_on_leave` set, so a re-hired staff member gets workspace boards back. Removing someone from a board by hand sets `revoked_on_leave` to false, even on a row already revoked by leaving, so that removal survives a rejoin.
 
-Clients never get a workspace role. A planner adds a contact to a board as `viewer` or `approver`, which creates a participant row with `contact_id` set. The contact must belong to the board's client. The contact link signs the contact in and shows only the boards they were added to.
+Clients never get a workspace role. A planner adds a contact to a board as `viewer` or `approver`, which creates a participant row with `contact_id` set. The contact must belong to the board's client. Each contact–board assignment has its own link, which establishes a session for exactly that board. Opening one link never discovers another assigned board.
 
-A contact link is a bearer link that can be forwarded, so a session from it is capped at approver, like a share link. A contact who signs up and uses their account gets the full role on their row.
+A contact link is a bearer link that can be forwarded, so a session from it is capped at approver, like a share link. Contact-to-account linking remains planned; it is not performed from matching email addresses.
 
 ## Tokens
 
 | Token | Format | Stored | Can be shown again |
 |-------|--------|--------|--------------------|
 | Board share link | `<board id>.HMAC(secret, id:link_version)` | `link_version` only | Yes, rebuilt on demand |
-| Client contact link | `<contact id>.HMAC(secret, id:link_version)` | `link_version` only | Yes, rebuilt on demand |
+| Client board link | `<participantId>.<signature>` signing `contact-board:<participantId>:<linkVersion>` | Participant `link_version` only | Yes, rebuilt on demand |
 | Invite | Random | Hash only | No. Resend issues a new token |
 
-Links compare the HMAC in constant time. Rotating the secret ends every share and client link at once.
+Links compare the HMAC in constant time. Rotating the secret ends every client link and contact session at once. Rotating a participant link ends only that assignment. Generic board-share links remain planned.
 
 Invites are never deleted. They end as accepted, revoked, or expired, so the table doubles as a record of who invited whom.
+
+## Implemented client boundary
+
+[Work unit 5](16-backend-client-access.md) uses a separate `/client` cookie and
+read surface. Account permissions never elevate client reads. Parent client/contact
+locks precede boards, and authorization is rechecked after locking. Contacts can
+view notes/media and request private image URLs; approver decisions follow later.
+Archiving a client preserves access. Removing a contact anonymizes it and revokes
+all assignments atomically. Previously signed image URLs expire within five minutes.
