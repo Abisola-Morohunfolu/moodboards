@@ -190,3 +190,16 @@ Archiving a client preserves existing access; explicit revocation ends it.
 in Postgres and include assignment generation plus signing-secret fingerprint.
 Requests recheck removal, revocation, expiry, and board/client ownership under
 parent-before-board locks. Restoring a grant rotates its generation.
+
+## Web implementation
+
+**D51. Start the planner UI on the implemented backend contracts.** React Query
+manages account and contact requests in separate caches; Tailwind CSS supplies
+the paper-and-coral interface. The desktop planner uses a DOM canvas and the
+client uses a mobile-first reading view. Approval controls follow the approvals
+API rather than appearing as nonfunctional buttons.
+
+**D52. Issue browser-facing contact links when a web origin is configured.** An
+optional `PUBLIC_WEB_URL` sends new links through the web entry. Explicit JSON
+exchange remains available; old API links opened as HTML redirect to the web
+entry. Removing the token from history limits accidental disclosure.

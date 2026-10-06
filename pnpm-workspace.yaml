@@ -1,6 +1,8 @@
 packages:
+  - apps/web
   - apps/api
   - apps/worker
+  - packages/ui
   - packages/contracts
   - packages/database
   - packages/storage

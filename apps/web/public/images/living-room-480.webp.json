@@ -1,0 +1,16 @@
+{
+  "prompt": "Use case: photorealistic-natural\nAsset type: project website editorial photograph\nPrimary request: a serene modern apartment living area with a pale blue sofa and a sculptural dark blue chair, tastefully styled with tactile natural materials.\nScene/backdrop: airy residential interior, warm off-white walls, a large window, subtle wood and stone furnishings.\nStyle/medium: authentic high-end interior photography, realistic texture, restrained editorial styling.\nComposition/framing: horizontal 4:3 landscape photograph, comfortable wide view of the living area, coherent physical room, no people.\nLighting/mood: soft natural daylight, calm and inviting.\nMaterials/textures: linen upholstery, natural wood, a textured neutral rug and understated ceramics.\nConstraints: a single photographic scene. No UI, collage, frames, watermarks, logos or visible text.",
+  "createdAt": "2026-10-06T09:05:39.570Z",
+  "originalCreatedAt": "2026-10-06T08:54:48.079Z",
+  "originLocalPath": "/Users/mac/.codex/generated_images/01a1105a-ece5-7542-bae4-d8892ed69376/exec-d876bbb1-680d-44b9-8d74-d40221300a04.png",
+  "derivedFrom": "/Users/mac/Documents/projects/moodboard/apps/web/public/images/living-room.webp",
+  "transform": {
+    "operation": "resize-and-encode",
+    "width": 480,
+    "height": 360,
+    "format": "webp",
+    "quality": 68,
+    "effort": 6,
+    "composition": "preserved; no crop"
+  }
+}

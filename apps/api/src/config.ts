@@ -59,6 +59,7 @@ const environmentSchema = z
       z.string().min(32).max(512).optional(),
     ),
     PUBLIC_API_URL: z.preprocess((v) => (v === '' ? undefined : v), originSchema.optional()),
+    PUBLIC_WEB_URL: z.preprocess((v) => (v === '' ? undefined : v), originSchema.optional()),
     AUTH_ALLOWED_ORIGINS: z.preprocess(
       (value) =>
         typeof value === 'string' ? value.split(',').map((origin) => origin.trim()) : value,
@@ -110,6 +111,9 @@ const environmentSchema = z
     if (config.NODE_ENV === 'production') {
       if (config.PUBLIC_API_URL && !config.PUBLIC_API_URL.startsWith('https://')) {
         context.addIssue({ code: 'custom', path: ['PUBLIC_API_URL'], message: 'HTTPS required' });
+      }
+      if (config.PUBLIC_WEB_URL && !config.PUBLIC_WEB_URL.startsWith('https://')) {
+        context.addIssue({ code: 'custom', path: ['PUBLIC_WEB_URL'], message: 'HTTPS required' });
       }
       if (config.AUTH_ALLOWED_ORIGINS.some((origin) => !origin.startsWith('https://'))) {
         context.addIssue({

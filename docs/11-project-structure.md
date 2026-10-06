@@ -82,7 +82,8 @@ and shared packages. Work unit 2 adds accounts and workspace onboarding. Work
 unit 3 adds access, boards, sections, and note features, plus the transactional
 event writer under API platform adapters. Blank boards do not yet need a kits
 package or module registry. Work unit 4 adds the media dispatcher, workers, maintenance, and shared storage
-adapter. The web app still has no runtime code.
+adapter. Work unit 6 activates the TanStack Start web app, the shared UI package,
+React Query, and Tailwind CSS.
 
 Work unit 5 adds clients, contact participants, board-specific link exchange, and
 isolated client read controllers. The shared access feature owns the typed

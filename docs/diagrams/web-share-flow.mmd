@@ -1,0 +1,26 @@
+sequenceDiagram
+  actor Planner
+  participant Web as React app
+  participant Query as React Query
+  participant API as NestJS API
+  participant Store as Private R2
+  actor Client
+  Planner->>Web: Create board and add image
+  Web->>Query: Run mutations
+  Query->>API: Reserve upload
+  API-->>Query: Asset ID and signed URL
+  Web->>Store: Upload file
+  Query->>API: Create image item
+  API-->>Query: Pending item
+  Query->>API: Poll processing status
+  API-->>Query: Ready item
+  Planner->>Web: Assign contact and copy link
+  Query->>API: Create assignment and request link
+  API-->>Web: Web share URL
+  Planner-->>Client: Share link manually
+  Client->>Web: Open share URL
+  Web->>API: Exchange token
+  API-->>Web: Board identity and client cookie
+  Web->>Web: Clear client cache and replace token URL
+  Query->>API: Read through client endpoints
+  API-->>Query: Authorized board data
