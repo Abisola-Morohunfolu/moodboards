@@ -92,9 +92,12 @@ describe('API configuration', () => {
         'Invalid API configuration: LINK_SECRET',
       );
     }
-    expect(validateEnvironment({ ...valid, LINK_SECRET: '', PUBLIC_API_URL: '' })).toMatchObject({
+    expect(
+      validateEnvironment({ ...valid, LINK_SECRET: '', PUBLIC_API_URL: '', PUBLIC_WEB_URL: '' }),
+    ).toMatchObject({
       LINK_SECRET: undefined,
       PUBLIC_API_URL: undefined,
+      PUBLIC_WEB_URL: undefined,
     });
     expect(
       validateEnvironment({
@@ -103,6 +106,11 @@ describe('API configuration', () => {
         PUBLIC_API_URL: 'http://127.0.0.1:3001',
       }),
     ).toMatchObject({ PUBLIC_API_URL: 'http://127.0.0.1:3001' });
+    expect(
+      validateEnvironment({ ...valid, PUBLIC_WEB_URL: 'http://127.0.0.1:3000' }),
+    ).toMatchObject({
+      PUBLIC_WEB_URL: 'http://127.0.0.1:3000',
+    });
     for (const url of [
       'https://user:secret@example.com',
       'https://example.com/share',
@@ -112,6 +120,17 @@ describe('API configuration', () => {
         'Invalid API configuration: PUBLIC_API_URL',
       );
     }
+    expect(() =>
+      validateEnvironment({ ...valid, PUBLIC_WEB_URL: 'https://example.com/share' }),
+    ).toThrow('PUBLIC_WEB_URL');
+    expect(() =>
+      validateEnvironment({
+        ...valid,
+        NODE_ENV: 'production',
+        AUTH_ALLOWED_ORIGINS: ['https://app.example.com'],
+        PUBLIC_WEB_URL: 'http://app.example.com',
+      }),
+    ).toThrow('PUBLIC_WEB_URL');
     expect(() =>
       validateEnvironment({
         ...valid,

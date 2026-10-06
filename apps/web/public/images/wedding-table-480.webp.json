@@ -1,0 +1,16 @@
+{
+  "prompt": "Use case: photorealistic-natural\nAsset type: project website editorial photograph\nPrimary request: an intimate garden wedding reception table with white flowers and greenery, pale blue linen, natural afternoon light.\nScene/backdrop: lush quiet garden, elegant table set for a small reception.\nStyle/medium: authentic editorial event photography with delicate natural textures and restrained styling.\nComposition/framing: horizontal 4:3 landscape photograph, view at table height showing the pale blue linen, white floral arrangement, greenery and refined place settings; no people.\nLighting/mood: soft natural afternoon daylight, intimate, serene and celebratory.\nMaterials/textures: woven pale blue linen, clear glassware, white ceramic plates, lush fresh foliage.\nConstraints: a single photographic scene. No UI, collage, frames, watermarks, logos or visible text.",
+  "createdAt": "2026-10-06T09:05:39.694Z",
+  "originalCreatedAt": "2026-10-06T08:54:48.109Z",
+  "originLocalPath": "/Users/mac/.codex/generated_images/01a1105a-ece5-7542-bae4-d8892ed69376/exec-e96592e8-6b8a-4764-8b1d-ff47749e485c.png",
+  "derivedFrom": "/Users/mac/Documents/projects/moodboard/apps/web/public/images/wedding-table.webp",
+  "transform": {
+    "operation": "resize-and-encode",
+    "width": 480,
+    "height": 360,
+    "format": "webp",
+    "quality": 68,
+    "effort": 6,
+    "composition": "preserved; no crop"
+  }
+}

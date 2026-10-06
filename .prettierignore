@@ -4,5 +4,7 @@ coverage/
 .idea/
 .env*
 pnpm-lock.yaml
+.impeccable/
+apps/web/src/routeTree.gen.ts
 **/*.md
 db/schema.sql

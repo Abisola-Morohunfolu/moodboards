@@ -43,6 +43,16 @@ export class ShareController {
     @Res({ passthrough: true }) response: Response,
   ) {
     response.setHeader('Referrer-Policy', 'no-referrer');
+    response.setHeader('Cache-Control', 'no-store');
+    const webUrl = this.config.get('PUBLIC_WEB_URL', { infer: true });
+    if (
+      webUrl &&
+      request.headers.accept?.includes('text/html') &&
+      request.accepts(['html', 'json']) === 'html'
+    ) {
+      response.redirect(302, `${webUrl}/share/${encodeURIComponent(token)}`);
+      return;
+    }
     await this.limits.enforce('contact-link', request.ip ?? 'unknown', 30, response);
     const result = await withTransaction(this.source, (manager) =>
       this.shares.exchange(manager, token),

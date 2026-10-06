@@ -39,6 +39,7 @@ export class ContactLinks {
   }
   url(participantId: string, version: number): string {
     const { secret, baseUrl } = this.configuration();
-    return `${baseUrl}/share/${participantId}.${contactSignature(secret, participantId, version)}`;
+    const webUrl = this.config.get('PUBLIC_WEB_URL', { infer: true });
+    return `${webUrl ?? baseUrl}/share/${participantId}.${contactSignature(secret, participantId, version)}`;
   }
 }

@@ -1,0 +1,16 @@
+{
+  "prompt": "Use case: photorealistic-natural\nAsset type: project website editorial photograph\nPrimary request: a designer's desk viewed directly overhead with abstract printed references, blue color swatches, a sketchbook and small ceramic objects.\nScene/backdrop: calm pale warm desk surface arranged as an authentic creative workspace.\nStyle/medium: realistic editorial still-life photography, subtle texture, thoughtfully arranged but natural.\nComposition/framing: horizontal 4:3 landscape photograph, straight overhead view with clear spaces between the references, swatches, open sketchbook and ceramics; no people.\nLighting/mood: soft daylight, quiet creative concentration.\nColor palette: pale warm neutrals, restrained shades of blue.\nMaterials/textures: matte printed paper, blue paper swatches, sketchbook paper, small tactile ceramics.\nConstraints: printed references and sketchbook contain only abstract imagery or nonverbal sketch marks. No readable text, logos, UI, collage layout, frames, watermarks or visible text; one coherent photographed desk.",
+  "createdAt": "2026-10-06T09:05:39.881Z",
+  "originalCreatedAt": "2026-10-06T08:54:48.136Z",
+  "originLocalPath": "/Users/mac/.codex/generated_images/01a1105a-ece5-7542-bae4-d8892ed69376/exec-6330c9f4-3047-443a-bdf0-d61b8ac01b25.png",
+  "derivedFrom": "/Users/mac/Documents/projects/moodboard/apps/web/public/images/creative-desk.webp",
+  "transform": {
+    "operation": "resize-and-encode",
+    "width": 800,
+    "height": 600,
+    "format": "webp",
+    "quality": 68,
+    "effort": 6,
+    "composition": "preserved; no crop"
+  }
+}

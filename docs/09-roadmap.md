@@ -1,5 +1,9 @@
 # Roadmap
 
+Implementation note: backend work units 1–5 are complete. Work unit 6 adds the
+planner interface and mobile client viewer on existing APIs. Approvals and swap
+requests follow in the next work unit. See [work unit 6](17-web-planner-client-ui.md).
+
 Estimates assume one full-stack developer working part time, about 15 hours a week.
 
 ## Phase 0: validate, 2 weeks

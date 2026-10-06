@@ -10,6 +10,7 @@ export function configureHttp(app: INestApplication): void {
     credentials: true,
     methods: ['GET', 'POST', 'PATCH', 'DELETE', 'OPTIONS'],
     allowedHeaders: ['Content-Type'],
+    exposedHeaders: ['Retry-After'],
   });
   // Account responses must not be cached by a browser or intermediary.
   app.use(

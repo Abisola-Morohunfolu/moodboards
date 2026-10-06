@@ -74,6 +74,7 @@ describe('Board-specific contact HTTP workflow', () => {
     await store.client.flushDb();
     app.get(ConfigService).set('LINK_SECRET', 'x'.repeat(64));
     app.get(ConfigService).set('PUBLIC_API_URL', 'http://127.0.0.1:3001');
+    app.get(ConfigService).set('PUBLIC_WEB_URL', undefined);
   });
   afterEach(() => jest.restoreAllMocks());
   afterAll(async () => {
@@ -165,6 +166,26 @@ describe('Board-specific contact HTTP workflow', () => {
     expect((response.headers['set-cookie'] as unknown as string[])[0]).toContain('Path=/client;');
     return { contactCookie: cookie(response, CONTACT_COOKIE), response };
   }
+  it('redirects browser navigation to the web entry while preserving JSON exchange', async () => {
+    const f = await fixture();
+    const oldPath = f.boards[0]!.path;
+    app.get(ConfigService).set('PUBLIC_WEB_URL', 'http://127.0.0.1:3000');
+    const newLink = await api()
+      .get(`/boards/${f.boards[0]!.id}/participants/${f.boards[0]!.participant.id}/link`)
+      .set('Cookie', f.accountCookie)
+      .expect(200);
+    expect(contactLinkResponseSchema.parse(newLink.body).url).toBe(
+      `http://127.0.0.1:3000${oldPath}`,
+    );
+    const redirected = await api()
+      .get(oldPath)
+      .set('Accept', 'text/html,application/xhtml+xml,*/*;q=0.8')
+      .expect(302);
+    expect(redirected.headers.location).toBe(`http://127.0.0.1:3000${oldPath}`);
+    expect(redirected.headers['referrer-policy']).toBe('no-referrer');
+    const exchanged = await api().get(oldPath).set('Accept', 'application/json').expect(200);
+    expect(shareResponseSchema.parse(exchanged.body).board.id).toBe(f.boards[0]!.id);
+  });
   it('reads notes, shared previews and private images from one board with contact permissions while the planner stays signed in', async () => {
     const f = await fixture();
     const a = f.boards[0]!;
