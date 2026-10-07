@@ -8,6 +8,7 @@ import { AssetsService } from '../apps/api/src/features/assets/assets.service';
 import { MediaStorage } from '../apps/api/src/platform/storage/storage.module';
 import { ItemsService } from '../apps/api/src/features/items/items.service';
 import { ItemsRepository } from '../apps/api/src/features/items/items.repository';
+import { ItemPreviewsRepository } from '../apps/api/src/features/items/item-previews.repository';
 import { MediaProcessors } from '../apps/worker/src/jobs/processors';
 import { InvalidMedia } from '../apps/worker/src/jobs/egress';
 import { Maintenance } from '../apps/worker/src/jobs/maintenance';
@@ -40,6 +41,7 @@ describe('Media storage and transactional results', () => {
       new ItemsRepository(source),
       services.sectionsRepository,
       services.events,
+      new ItemPreviewsRepository(),
       assets,
     );
     processors = new MediaProcessors(source, storage, fetcher);

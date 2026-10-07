@@ -6,6 +6,7 @@ import {
   noteResponseSchema,
 } from '@moodboard/contracts';
 import { ItemsRepository } from '../apps/api/src/features/items/items.repository';
+import { ItemPreviewsRepository } from '../apps/api/src/features/items/item-previews.repository';
 import { ItemsService } from '../apps/api/src/features/items/items.service';
 import { testDataSource } from './database';
 import { boardServices, boardUser, boardWorkspace } from './board-fixture';
@@ -13,19 +14,25 @@ import { boardServices, boardUser, boardWorkspace } from './board-fixture';
 describe('Note content, positions, and atomic events', () => {
   const source = testDataSource(8);
   const { access, boards, sections, sectionsRepository, events } = boardServices(source);
-  const items = new ItemsService(access, new ItemsRepository(source), sectionsRepository, events);
+  const items = new ItemsService(
+    access,
+    new ItemsRepository(source),
+    sectionsRepository,
+    events,
+    new ItemPreviewsRepository(),
+  );
   beforeAll(async () => {
     await source.initialize();
     await source.runMigrations();
   });
   beforeEach(async () => {
-    await source.query('truncate users, workspaces cascade');
+    await source.query('truncate users, workspaces, link_previews cascade');
   });
   afterEach(() => {
     jest.restoreAllMocks();
   });
   afterAll(async () => {
-    await source.query('truncate users, workspaces cascade');
+    await source.query('truncate users, workspaces, link_previews cascade');
     await source.destroy();
   });
   async function create() {
@@ -43,6 +50,139 @@ describe('Note content, positions, and atomic events', () => {
     note: '  original\ncontent  ',
     priceCents: 2500,
   });
+  it.each([
+    { title: "Client's idea", priceCents: 4567 },
+    { title: null, priceCents: null },
+  ])('preserves bound creation fields and nullable values: %j', async (content) => {
+    const { userId, board } = await create();
+    const section = await sections.create(userId, board.id, { name: 'Ideas', position: 'b0' });
+    const note = {
+      ...input(),
+      ...content,
+      sectionId: section.id,
+      note: "Keep this text: '); DELETE FROM items; --\nSecond line",
+      x: 0,
+      y: 13.5,
+      zOrder: 'c8',
+      quantity: 3,
+    };
+    const result = await items.create(userId, board.id, note);
+    const item = noteResponseSchema.parse(result.item);
+    expect(result.created).toBe(true);
+    expect(item).toEqual({
+      id: note.id,
+      boardId: board.id,
+      sectionId: section.id,
+      createdBy: expect.any(String),
+      kind: 'note',
+      title: note.title,
+      note: note.note,
+      x: note.x,
+      y: note.y,
+      zOrder: note.zOrder,
+      priceCents: note.priceCents,
+      quantity: note.quantity,
+      version: 1,
+      deletedAt: null,
+      createdAt: expect.any(String),
+      updatedAt: expect.any(String),
+    });
+    expect(
+      await source.query(
+        `select id,board_id,section_id,created_by,kind,title,note,x,y,z_order,
+          price_cents,quantity,asset_id,link_preview_id,version,deleted_at,created_at,updated_at
+        from items where id=$1`,
+        [note.id],
+      ),
+    ).toEqual([
+      {
+        id: note.id,
+        board_id: board.id,
+        section_id: section.id,
+        created_by: item.createdBy,
+        kind: 'note',
+        title: note.title,
+        note: note.note,
+        x: note.x,
+        y: note.y,
+        z_order: note.zOrder,
+        price_cents: note.priceCents,
+        quantity: note.quantity,
+        asset_id: null,
+        link_preview_id: null,
+        version: 1,
+        deleted_at: null,
+        created_at: new Date(item.createdAt),
+        updated_at: new Date(item.updatedAt),
+      },
+    ]);
+    expect(await items.list(userId, board.id)).toEqual([result.item]);
+  });
+  it('retries a link with changed input without creating another preview or event', async () => {
+    const { userId, board } = await create();
+    const link = {
+      id: randomUUID(),
+      kind: 'link' as const,
+      url: 'https://example.com/original',
+      title: "Client's link",
+      zOrder: 'a0',
+    };
+    const created = await items.create(userId, board.id, link);
+    const retry = await items.create(userId, board.id, {
+      ...link,
+      url: 'https://example.com/ignored',
+      title: 'Ignored',
+      sectionId: randomUUID(),
+      zOrder: 'b0',
+    });
+    expect(retry).toEqual({ created: false, item: created.item });
+    expect(await source.query('select url from link_previews')).toEqual([{ url: link.url }]);
+    expect(
+      await source.query("select count(*)::int as n from board_events where type='item.created'"),
+    ).toEqual([{ n: 1 }]);
+    expect((await boards.get(userId, board.id)).board.eventSeq).toBe('2');
+  });
+  it.each([false, true])(
+    'rolls back link creation after event append while preserving an existing preview: %s',
+    async (reusePreview) => {
+      const { userId, board } = await create();
+      const url = 'https://example.com/rollback';
+      if (reusePreview) {
+        await items.create(userId, board.id, {
+          id: randomUUID(),
+          kind: 'link',
+          url,
+          zOrder: 'a0',
+        });
+      }
+      const previousItems = await items.list(userId, board.id);
+      const previousPreviews = await source.query('select * from link_previews order by id');
+      const previousEvents = await source.query(
+        'select * from board_events where board_id=$1 order by board_seq',
+        [board.id],
+      );
+      const previousSequence = (await boards.get(userId, board.id)).board.eventSeq;
+      const id = randomUUID();
+      const append = events.append.bind(events);
+      jest.spyOn(events, 'append').mockImplementation(async (...args) => {
+        await append(...args);
+        throw new Error('event failure');
+      });
+      await expect(
+        items.create(userId, board.id, { id, kind: 'link', url, zOrder: 'b0' }),
+      ).rejects.toThrow('event failure');
+      expect(await items.list(userId, board.id)).toEqual(previousItems);
+      expect(await source.query('select * from link_previews order by id')).toEqual(
+        previousPreviews,
+      );
+      expect(
+        await source.query('select * from board_events where board_id=$1 order by board_seq', [
+          board.id,
+        ]),
+      ).toEqual(previousEvents);
+      expect((await boards.get(userId, board.id)).board.eventSeq).toBe(previousSequence);
+    },
+  );
   it('serializes finite coordinates at the Postgres real bounds into valid responses', async () => {
     const { userId, board } = await create();
     const { item } = await items.create(userId, board.id, { ...input(), x: 3.402823466e38 });

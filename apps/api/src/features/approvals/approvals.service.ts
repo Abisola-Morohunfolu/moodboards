@@ -10,13 +10,13 @@ import { AccessService } from '../access/access.service';
 import { BoardAccess } from '../access/access.repository';
 import { ContactPrincipal } from '../access/contact-access';
 import { BoardEventWriter } from '../../platform/events/board-event.writer';
-import { ApprovalStateRow, ApprovalsRepository, DecisionRow } from './approvals.repository';
+import { ApprovalStateRow, ApprovalsRepository, DecisionRecord } from './approvals.repository';
 
 function coreState(status: ApprovalStateRow['status']): ApprovalStateRow['core_state'] {
   return status === 'approved' ? 'approved' : status === 'pending' ? 'pending' : 'rejected';
 }
 
-function decisionResponse(row: DecisionRow) {
+function decisionResponse(row: DecisionRecord) {
   return {
     id: row.id,
     itemId: row.item_id,
@@ -238,7 +238,7 @@ export class ApprovalsService {
         if (state.core_state === 'approved') {
           throw new ConflictException('Approved item is signed off');
         }
-        const [inserted] = await manager.query<DecisionRow[]>(
+        const [inserted] = await manager.query<DecisionRecord[]>(
           `insert into approval_decisions(id,item_id,item_version,participant_id,status,comment)
           values($1,$2,$3,$4,$5,$6) returning *`,
           [
