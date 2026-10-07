@@ -1,4 +1,4 @@
-import { createHash, randomUUID } from 'node:crypto';
+import { createHash } from 'node:crypto';
 import { resourceLock } from '@moodboard/database';
 import { AssetsService } from '../assets/assets.service';
 import { ConflictException, Injectable, NotFoundException, Optional } from '@nestjs/common';
@@ -7,6 +7,7 @@ import { AccessService } from '../access/access.service';
 import { SectionsRepository } from '../sections/sections.repository';
 import { BoardEventWriter } from '../../platform/events/board-event.writer';
 import { ItemsRepository } from './items.repository';
+import { ItemPreviewsRepository } from './item-previews.repository';
 import { BoardPrincipal } from '../access/contact-access';
 import { ApprovalsService } from '../approvals/approvals.service';
 
@@ -17,6 +18,7 @@ export class ItemsService {
     private readonly repository: ItemsRepository,
     private readonly sections: SectionsRepository,
     private readonly events: BoardEventWriter,
+    private readonly previews: ItemPreviewsRepository,
     @Optional() private readonly assets?: AssetsService,
     @Optional() private readonly approvals?: ApprovalsService,
   ) {}
@@ -90,14 +92,7 @@ export class ItemsService {
           }
         }
         if (input.kind === 'link') {
-          await manager.query(
-            'insert into link_previews (id,url,url_hash) values ($1,$2,$3) on conflict (url_hash) do nothing',
-            [randomUUID(), input.url, hash],
-          );
-          const [preview] = await manager.query('select id from link_previews where url_hash=$1', [
-            hash,
-          ]);
-          previewId = preview.id;
+          previewId = await this.previews.findOrCreate(manager, input.url, hash!);
         }
         const { item, created } = await this.repository.create(
           manager,

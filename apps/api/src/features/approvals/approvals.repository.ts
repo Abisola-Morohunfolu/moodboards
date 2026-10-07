@@ -11,18 +11,20 @@ export interface ApprovalStateRow {
 export interface ApprovalReconciliationRow extends ApprovalStateRow {
   next_status: ApprovalStatus;
 }
-export interface DecisionRow {
+export interface DecisionRecord {
   id: string;
   item_id: string;
   item_version: number;
   participant_id: string;
-  contact_id: string;
-  contact_name: string;
   status: 'approved' | 'rejected' | 'swap_requested';
   comment: string | null;
   decided_at: Date;
   result_status: ApprovalStatus | null;
   result_core_state: 'pending' | 'approved' | 'rejected' | null;
+}
+export interface DecisionWithContactRow extends DecisionRecord {
+  contact_id: string;
+  contact_name: string;
 }
 
 @Injectable()
@@ -89,8 +91,11 @@ export class ApprovalsRepository {
     return existing!;
   }
 
-  async existingDecision(manager: EntityManager, id: string): Promise<DecisionRow | null> {
-    const [row] = await manager.query<DecisionRow[]>(
+  async existingDecision(
+    manager: EntityManager,
+    id: string,
+  ): Promise<DecisionWithContactRow | null> {
+    const [row] = await manager.query<DecisionWithContactRow[]>(
       `select d.*,p.contact_id,c.name as contact_name from approval_decisions d
       join board_participants p on p.id=d.participant_id
       join client_contacts c on c.id=p.contact_id where d.id=$1`,
@@ -104,7 +109,7 @@ export class ApprovalsRepository {
     boardId: string,
     itemId: string,
     version: number,
-  ): Promise<{ status: DecisionRow['status'] | null }[]> {
+  ): Promise<{ status: DecisionRecord['status'] | null }[]> {
     return manager.query(
       `select d.status from board_participants p
       join boards b on b.id=p.board_id
@@ -119,7 +124,7 @@ export class ApprovalsRepository {
     );
   }
 
-  latestDecisions(manager: EntityManager, boardId: string): Promise<DecisionRow[]> {
+  latestDecisions(manager: EntityManager, boardId: string): Promise<DecisionWithContactRow[]> {
     return manager.query(
       `select distinct on (d.item_id,d.participant_id)
         d.*,p.contact_id,c.name as contact_name

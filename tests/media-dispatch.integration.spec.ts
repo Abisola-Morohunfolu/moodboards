@@ -5,6 +5,7 @@ import { MediaProcessors } from '../apps/worker/src/jobs/processors';
 import { Maintenance } from '../apps/worker/src/jobs/maintenance';
 import { ItemsService } from '../apps/api/src/features/items/items.service';
 import { ItemsRepository } from '../apps/api/src/features/items/items.repository';
+import { ItemPreviewsRepository } from '../apps/api/src/features/items/item-previews.repository';
 import { testDataSource } from './database';
 import { testRedisUrl } from './redis';
 import { testStorage } from './storage';
@@ -18,6 +19,7 @@ describe('Leased outbox deliveries and recovery', () => {
     new ItemsRepository(source),
     services.sectionsRepository,
     services.events,
+    new ItemPreviewsRepository(),
   );
   let queues: MediaQueues;
   let dispatcher: Dispatcher;
