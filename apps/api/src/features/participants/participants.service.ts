@@ -1,10 +1,11 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { Injectable, NotFoundException, Optional } from '@nestjs/common';
 import { AssignContactRequest, UpdateContactParticipantRequest } from '@moodboard/contracts';
 import { AccessService } from '../access/access.service';
 import { ContactLinks } from '../access/contact-links';
 import { BoardEventWriter } from '../../platform/events/board-event.writer';
 import { ParticipantsRepository, participantResponse } from './participants.repository';
 import { lockContactParents } from '../access/contact-access';
+import { ApprovalsService } from '../approvals/approvals.service';
 
 @Injectable()
 export class ParticipantsService {
@@ -13,6 +14,7 @@ export class ParticipantsService {
     private readonly repository: ParticipantsRepository,
     private readonly events: BoardEventWriter,
     private readonly links: ContactLinks,
+    @Optional() private readonly approvals?: ApprovalsService,
   ) {}
   list(userId: string, boardId: string) {
     return this.access.withBoard(
@@ -50,6 +52,14 @@ export class ParticipantsService {
             payload: { participantId: result.row.id, changedFields: result.changedFields },
           });
         }
+        if (
+          result.created ||
+          result.restored ||
+          result.changedFields.includes('role') ||
+          result.changedFields.includes('expiresAt')
+        ) {
+          await this.approvals?.reconcileBoard(manager, boardId, access.participantId);
+        }
         return { participant: participantResponse(result.row), created: result.created };
       },
       true,
@@ -78,6 +88,7 @@ export class ParticipantsService {
               type: 'access.changed',
               payload: { participantId: row.id, changedFields: ['revokedAt', 'linkVersion'] },
             });
+            await this.approvals?.reconcileBoard(manager, boardId, access.participantId);
           }
           return;
         }
@@ -89,6 +100,7 @@ export class ParticipantsService {
               type: 'access.changed',
               payload: { participantId: row.id, changedFields: updated.fields },
             });
+            await this.approvals?.reconcileBoard(manager, boardId, access.participantId);
           }
           return participantResponse(updated.row);
         }

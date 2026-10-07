@@ -203,3 +203,5 @@ API rather than appearing as nonfunctional buttons.
 optional `PUBLIC_WEB_URL` sends new links through the web entry. Explicit JSON
 exchange remains available; old API links opened as HTML redirect to the web
 entry. Removing the token from history limits accidental disclosure.
+
+**D53. Phase 1 client approvals require every current approver, then freeze a completed sign-off.** Business boards with a client association use approvals without generic module controls. A contact decision is tied to an item content version. While pending or rejected, the current approver roster determines the result; once all approve, a new contact cannot reopen that version. A planner content edit resets the item to pending and starts a new round. Decision IDs and result snapshots make retries safe, while contact-specific reads expose no peer feedback.

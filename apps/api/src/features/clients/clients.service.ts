@@ -1,10 +1,11 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, Optional } from '@nestjs/common';
 import { DataSource } from 'typeorm';
 import { withTransaction } from '@moodboard/database';
 import { CreateContactRequest } from '@moodboard/contracts';
 import { ClientsRepository } from './clients.repository';
 import { BoardEventWriter } from '../../platform/events/board-event.writer';
 import { AccessRepository } from '../access/access.repository';
+import { ApprovalsService } from '../approvals/approvals.service';
 
 @Injectable()
 export class ClientsService {
@@ -13,6 +14,7 @@ export class ClientsService {
     private readonly repository: ClientsRepository,
     private readonly events: BoardEventWriter,
     private readonly access: AccessRepository,
+    @Optional() private readonly approvals?: ApprovalsService,
   ) {}
   list(userId: string, workspaceId: string, archived: boolean) {
     return withTransaction(this.source, (m) =>
@@ -62,6 +64,7 @@ export class ClientsService {
           type: 'access.changed',
           payload: { participantId: row.id, changedFields: ['revokedAt', 'linkVersion'] },
         });
+        await this.approvals?.reconcileBoard(manager, row.board_id, actor);
       }
     });
   }

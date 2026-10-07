@@ -201,6 +201,18 @@ export const boardEventSchema = z.discriminatedUnion('type', [
   ...(['preview.ready', 'preview.failed'] as const).map((type) =>
     z.strictObject({ type: z.literal(type), payload: z.strictObject({ previewId: z.uuid() }) }),
   ),
+  z.strictObject({
+    type: z.literal('item.decided'),
+    payload: z.strictObject({ itemId: z.uuid(), itemVersion: integerSchema.positive() }),
+  }),
+  z.strictObject({
+    type: z.literal('approval.state_changed'),
+    payload: z.strictObject({
+      itemId: z.uuid(),
+      itemVersion: integerSchema.positive(),
+      coreState: z.enum(['pending', 'approved', 'rejected']),
+    }),
+  }),
 ]);
 export type BoardEvent = z.infer<typeof boardEventSchema>;
 export type BoardCoreEvent = z.infer<typeof boardCoreEventSchema>;

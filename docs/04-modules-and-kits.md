@@ -72,6 +72,12 @@ A module that seeds data does it on `board.created` when a kit turns it on, and 
 
 ## Approval states
 
+Work unit 7 implements business client approvals on existing blank boards with
+a fixed `all` rule and version-scoped decisions. Approved versions stay signed
+off when the approver list changes. The configurable rules and kit-specific
+statuses below describe the later module system; see
+[backend approvals](18-backend-approvals.md) for the current API.
+
 Each kit defines its own statuses and maps each to one core state. Core screens, counts, and notifications use only the core state.
 
 | Kit status | Core state |

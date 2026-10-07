@@ -14,11 +14,15 @@ import {
   contactLinkResponseSchema,
   itemListResponseSchema,
   shareResponseSchema,
+  clientApprovalListSchema,
+  plannerApprovalListSchema,
+  decisionResponseSchema,
 } from '@moodboard/contracts';
 import { DataSource } from 'typeorm';
 import { AppModule } from '../apps/api/src/app.module';
 import { configureHttp } from '../apps/api/src/app.setup';
 import { CONTACT_COOKIE, SESSION_COOKIE } from '../apps/api/src/features/auth/cookies';
+import { BoardEventWriter } from '../apps/api/src/platform/events/board-event.writer';
 import { RedisRateLimitStore } from '../apps/api/src/features/auth/redis-rate-limit.store';
 import { MediaStorage } from '../apps/api/src/platform/storage/storage.module';
 import { MediaProcessors } from '../apps/worker/src/jobs/processors';
@@ -428,5 +432,326 @@ describe('Board-specific contact HTTP workflow', () => {
     await api().get(a.path).expect(503);
     app.get(ConfigService).set('LINK_SECRET', '');
     await api().get('/client/board').set('Cookie', fresh.contactCookie).expect(401);
+  });
+  it('requires all client approvers, exposes private feedback, and freezes signed-off item versions', async () => {
+    const f = await fixture();
+    const board = f.boards[0]!;
+    const item = await api()
+      .post(`/boards/${board.id}/items`)
+      .set('Cookie', f.accountCookie)
+      .send({ id: randomUUID(), kind: 'note', zOrder: 'a', note: 'First version' })
+      .expect(201);
+    const otherContact = await api()
+      .post(`/clients/${f.client.id}/contacts`)
+      .set('Cookie', f.accountCookie)
+      .send({ name: 'Second reviewer' })
+      .expect(201);
+    const otherAssignment = await api()
+      .post(`/boards/${board.id}/participants`)
+      .set('Cookie', f.accountCookie)
+      .send({ contactId: otherContact.body.id, role: 'approver' })
+      .expect(201);
+    const otherLink = await api()
+      .get(`/boards/${board.id}/participants/${otherAssignment.body.id}/link`)
+      .set('Cookie', f.accountCookie)
+      .expect(200);
+    const first = await open(board.path);
+    const second = await open(new URL(otherLink.body.url).pathname);
+    const mixed = `${first.contactCookie}; ${f.accountCookie}`;
+    const initially = clientApprovalListSchema.parse(
+      (await api().get('/client/board/approvals').set('Cookie', mixed).expect(200)).body,
+    );
+    expect(initially).toEqual([
+      {
+        itemId: item.body.id,
+        itemVersion: 1,
+        status: 'pending',
+        coreState: 'pending',
+        ownDecision: null,
+      },
+    ]);
+    await api().get('/client/board/approvals').set('Cookie', f.accountCookie).expect(401);
+    await api().get(`/boards/${board.id}/approvals`).set('Cookie', first.contactCookie).expect(401);
+    const firstId = randomUUID();
+    const request = { id: firstId, itemId: item.body.id, itemVersion: 1, status: 'approved' };
+    const firstDecision = decisionResponseSchema.parse(
+      (
+        await api()
+          .post('/client/board/approvals/decisions')
+          .set('Cookie', mixed)
+          .send(request)
+          .expect(201)
+      ).body,
+    );
+    expect(firstDecision.approval.coreState).toBe('pending');
+    const countBeforeRetry = await source.query(
+      'select count(*)::int as count from board_events where board_id=$1',
+      [board.id],
+    );
+    await api()
+      .post('/client/board/approvals/decisions')
+      .set('Cookie', mixed)
+      .send(request)
+      .expect(200, firstDecision);
+    expect(
+      await source.query('select count(*)::int as count from board_events where board_id=$1', [
+        board.id,
+      ]),
+    ).toEqual(countBeforeRetry);
+    await api()
+      .post('/client/board/approvals/decisions')
+      .set('Cookie', mixed)
+      .send({ ...request, status: 'rejected' })
+      .expect(409);
+    await api()
+      .post('/client/board/approvals/decisions')
+      .set('Cookie', second.contactCookie)
+      .send({ id: randomUUID(), itemId: item.body.id, itemVersion: 1, status: 'swap_requested' })
+      .expect(400);
+    const swap = await api()
+      .post('/client/board/approvals/decisions')
+      .set('Cookie', second.contactCookie)
+      .send({
+        id: randomUUID(),
+        itemId: item.body.id,
+        itemVersion: 1,
+        status: 'swap_requested',
+        comment: 'Use a lighter colour',
+      })
+      .expect(201);
+    expect(swap.body.approval).toMatchObject({ status: 'swap_requested', coreState: 'rejected' });
+    expect(
+      clientApprovalListSchema.parse(
+        (await api().get('/client/board/approvals').set('Cookie', mixed).expect(200)).body,
+      )[0]!.ownDecision?.comment,
+    ).toBeNull();
+    const planner = plannerApprovalListSchema.parse(
+      (await api().get(`/boards/${board.id}/approvals`).set('Cookie', f.accountCookie).expect(200))
+        .body,
+    );
+    expect(planner[0]!.decisions.map((d) => d.comment)).toContain('Use a lighter colour');
+    const completed = await api()
+      .post('/client/board/approvals/decisions')
+      .set('Cookie', second.contactCookie)
+      .send({ id: randomUUID(), itemId: item.body.id, itemVersion: 1, status: 'approved' })
+      .expect(201);
+    expect(completed.body.approval.coreState).toBe('approved');
+    await api()
+      .post('/client/board/approvals/decisions')
+      .set('Cookie', mixed)
+      .send({ id: randomUUID(), itemId: item.body.id, itemVersion: 1, status: 'rejected' })
+      .expect(409);
+    const third = await api()
+      .post(`/clients/${f.client.id}/contacts`)
+      .set('Cookie', f.accountCookie)
+      .send({ name: 'New reviewer' })
+      .expect(201);
+    await api()
+      .post(`/boards/${board.id}/participants`)
+      .set('Cookie', f.accountCookie)
+      .send({ contactId: third.body.id, role: 'approver' })
+      .expect(201);
+    expect(
+      (await api().get(`/boards/${board.id}/approvals`).set('Cookie', f.accountCookie).expect(200))
+        .body[0].coreState,
+    ).toBe('approved');
+    await api()
+      .patch(`/items/${item.body.id}/position`)
+      .set('Cookie', f.accountCookie)
+      .send({ x: 10 })
+      .expect(200);
+    expect(
+      (await api().get(`/boards/${board.id}/approvals`).set('Cookie', f.accountCookie).expect(200))
+        .body[0].coreState,
+    ).toBe('approved');
+    await api()
+      .patch(`/items/${item.body.id}`)
+      .set('Cookie', f.accountCookie)
+      .send({ version: 1, note: 'Second version' })
+      .expect(200);
+    const reset = (
+      await api().get(`/boards/${board.id}/approvals`).set('Cookie', f.accountCookie).expect(200)
+    ).body[0];
+    expect(reset).toMatchObject({ itemVersion: 2, status: 'pending', decisions: [] });
+    await api()
+      .post('/client/board/approvals/decisions')
+      .set('Cookie', mixed)
+      .send({ id: randomUUID(), itemId: item.body.id, itemVersion: 1, status: 'approved' })
+      .expect(409);
+    await api()
+      .post('/client/board/approvals/decisions')
+      .set('Cookie', mixed)
+      .send(request)
+      .expect(200, firstDecision);
+  });
+  it('reconciles expiry and rejects viewer, locked-board, and cross-board decisions', async () => {
+    const f = await fixture();
+    const board = f.boards[0]!;
+    const item = await api()
+      .post(`/boards/${board.id}/items`)
+      .set('Cookie', f.accountCookie)
+      .send({ id: randomUUID(), kind: 'note', zOrder: 'a' })
+      .expect(201);
+    const opened = await open(board.path);
+    const input = { id: randomUUID(), itemId: item.body.id, itemVersion: 1, status: 'approved' };
+    const otherItem = await api()
+      .post(`/boards/${f.boards[1]!.id}/items`)
+      .set('Cookie', f.accountCookie)
+      .send({ id: randomUUID(), kind: 'note', zOrder: 'a' })
+      .expect(201);
+    await api()
+      .post('/client/board/approvals/decisions')
+      .set('Cookie', opened.contactCookie)
+      .send({ ...input, itemId: otherItem.body.id })
+      .expect(404);
+    await api()
+      .patch(`/boards/${board.id}/participants/${board.participant.id}`)
+      .set('Cookie', f.accountCookie)
+      .send({ role: 'viewer' })
+      .expect(200);
+    await api()
+      .post('/client/board/approvals/decisions')
+      .set('Cookie', opened.contactCookie)
+      .send(input)
+      .expect(403);
+    await api()
+      .patch(`/boards/${board.id}/participants/${board.participant.id}`)
+      .set('Cookie', f.accountCookie)
+      .send({ role: 'approver' })
+      .expect(200);
+    await source.query('update boards set locked_at=now() where id=$1', [board.id]);
+    await api()
+      .post('/client/board/approvals/decisions')
+      .set('Cookie', opened.contactCookie)
+      .send(input)
+      .expect(403);
+    await source.query('update boards set locked_at=null where id=$1', [board.id]);
+    await source.query('update boards set archived_at=now() where id=$1', [board.id]);
+    await api()
+      .post('/client/board/approvals/decisions')
+      .set('Cookie', opened.contactCookie)
+      .send(input)
+      .expect(403);
+    await source.query('update boards set archived_at=null where id=$1', [board.id]);
+    await api()
+      .post('/client/board/approvals/decisions')
+      .set('Cookie', opened.contactCookie)
+      .send(input)
+      .expect(201);
+    await source.query(
+      "update board_participants set expires_at=now()-interval '1 second' where id=$1",
+      [board.participant.id],
+    );
+    await api().get('/client/board/approvals').set('Cookie', opened.contactCookie).expect(401);
+  });
+  it('keeps approvals unavailable on personal and unassociated business boards', async () => {
+    const f = await fixture();
+    const unassociated = await api()
+      .post('/boards')
+      .set('Cookie', f.accountCookie)
+      .send({ workspaceId: f.workspaceId, title: 'Draft' })
+      .expect(201);
+    await api()
+      .get(`/boards/${unassociated.body.id}/approvals`)
+      .set('Cookie', f.accountCookie)
+      .expect(404);
+    const workspaces = (await api().get('/workspaces').set('Cookie', f.accountCookie).expect(200))
+      .body as { id: string; type: string }[];
+    const personalId = workspaces.find((w) => w.type === 'personal')!.id;
+    const personal = await api()
+      .post('/boards')
+      .set('Cookie', f.accountCookie)
+      .send({ workspaceId: personalId, title: 'Personal' })
+      .expect(201);
+    await api()
+      .get(`/boards/${personal.body.id}/approvals`)
+      .set('Cookie', f.accountCookie)
+      .expect(404);
+  });
+  it('reconciles pending approvals when another approver expires and serializes concurrent decisions', async () => {
+    const f = await fixture();
+    const board = f.boards[0]!;
+    const otherContact = await api()
+      .post(`/clients/${f.client.id}/contacts`)
+      .set('Cookie', f.accountCookie)
+      .send({ name: 'Second reviewer' })
+      .expect(201);
+    const otherAssignment = await api()
+      .post(`/boards/${board.id}/participants`)
+      .set('Cookie', f.accountCookie)
+      .send({ contactId: otherContact.body.id, role: 'approver' })
+      .expect(201);
+    const otherLink = await api()
+      .get(`/boards/${board.id}/participants/${otherAssignment.body.id}/link`)
+      .set('Cookie', f.accountCookie)
+      .expect(200);
+    const a = await open(board.path);
+    const b = await open(new URL(otherLink.body.url).pathname);
+    const firstItem = await api()
+      .post(`/boards/${board.id}/items`)
+      .set('Cookie', f.accountCookie)
+      .send({ id: randomUUID(), kind: 'note', zOrder: 'a' })
+      .expect(201);
+    const makeDecision = (cookie: string, itemId: string) =>
+      api()
+        .post('/client/board/approvals/decisions')
+        .set('Cookie', cookie)
+        .send({ id: randomUUID(), itemId, itemVersion: 1, status: 'approved' });
+    const concurrent = await Promise.all([
+      makeDecision(a.contactCookie, firstItem.body.id),
+      makeDecision(b.contactCookie, firstItem.body.id),
+    ]);
+    expect(concurrent.map((r) => r.status)).toEqual([201, 201]);
+    expect(
+      (await api().get(`/boards/${board.id}/approvals`).set('Cookie', f.accountCookie).expect(200))
+        .body[0].coreState,
+    ).toBe('approved');
+    const secondItem = await api()
+      .post(`/boards/${board.id}/items`)
+      .set('Cookie', f.accountCookie)
+      .send({ id: randomUUID(), kind: 'note', zOrder: 'b' })
+      .expect(201);
+    await makeDecision(a.contactCookie, secondItem.body.id).expect(201);
+    expect(
+      (await api().get(`/boards/${board.id}/approvals`).set('Cookie', f.accountCookie).expect(200))
+        .body[1].coreState,
+    ).toBe('pending');
+    await source.query(
+      "update board_participants set expires_at=now()-interval '1 second' where id=$1",
+      [otherAssignment.body.id],
+    );
+    expect(
+      (await api().get(`/boards/${board.id}/approvals`).set('Cookie', f.accountCookie).expect(200))
+        .body[1].coreState,
+    ).toBe('approved');
+  });
+  it('rolls back a decision and state change when its event cannot be written', async () => {
+    const f = await fixture();
+    const board = f.boards[0]!;
+    const item = await api()
+      .post(`/boards/${board.id}/items`)
+      .set('Cookie', f.accountCookie)
+      .send({ id: randomUUID(), kind: 'note', zOrder: 'a' })
+      .expect(201);
+    const opened = await open(board.path);
+    const id = randomUUID();
+    const events = app.get(BoardEventWriter);
+    const append = events.append.bind(events);
+    jest.spyOn(events, 'append').mockImplementation((manager, boardId, actorId, event) => {
+      if (event.type === 'item.decided') {
+        throw new Error('Event unavailable');
+      }
+      return append(manager, boardId, actorId, event);
+    });
+    await api()
+      .post('/client/board/approvals/decisions')
+      .set('Cookie', opened.contactCookie)
+      .send({ id, itemId: item.body.id, itemVersion: 1, status: 'approved' })
+      .expect(500);
+    jest.restoreAllMocks();
+    expect(await source.query('select id from approval_decisions where id=$1', [id])).toEqual([]);
+    expect(
+      await source.query('select item_id from approval_states where item_id=$1', [item.body.id]),
+    ).toEqual([]);
   });
 });

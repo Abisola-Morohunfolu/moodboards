@@ -95,6 +95,13 @@ editing, movement, and soft deletion. Creation retries return 200 with the
 existing same-board item, including a deleted tombstone; first creation returns
 201. Work unit 4 adds image/link items and media endpoints; copying and export remain planned.
 
+Work unit 7 adds approvals for business boards with a client association. The
+implemented routes are `GET /boards/:id/approvals` for planner review,
+`GET /client/board/approvals` for contact state and own decision, and
+`POST /client/board/approvals/decisions` for contact decisions. See
+[approval contracts](18-backend-approvals.md). The generic module routes below
+remain Phase 2 specifications.
+
 | Method | Path | Needs | Notes |
 |--------|------|-------|-------|
 | POST, PATCH, DELETE | `/boards/:id/sections[/:sid]` | `item.edit` | |

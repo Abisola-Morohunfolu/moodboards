@@ -26,6 +26,7 @@ A shared mood board that turns inspiration into an agreed plan. Planners and des
 | [docs/15-backend-media-workers.md](docs/15-backend-media-workers.md) | Image uploads, shared link previews, durable jobs, and media maintenance |
 | [docs/16-backend-client-access.md](docs/16-backend-client-access.md) | Clients, board-specific contact links, isolated client sessions, and revocation |
 | [docs/17-web-planner-client-ui.md](docs/17-web-planner-client-ui.md) | Planner and client UI, local web setup, and browser flow diagrams |
+| [docs/18-backend-approvals.md](docs/18-backend-approvals.md) | Client decisions, swap requests, and approval state rules |
 
 ## Local development
 
@@ -34,6 +35,7 @@ workspace onboarding, blank canvas boards, sections, and note items, with shared
 database and contract packages. Business clients and contacts have board-specific
 links and isolated read sessions. The worker processes media jobs. The React web
 app provides planner boards, client management, and a mobile client viewer.
+The API also supports client approvals and swap requests; web controls follow.
 
 Start Docker. Then run these commands from the project root:
 
@@ -140,9 +142,10 @@ See [work unit 4](docs/15-backend-media-workers.md) for the HTTP flow, diagrams,
 configuration, R2 setup, and worker health routes. MinIO is used only by automated
 tests and is built from pinned upstream source releases.
 
-Starter kits, approvals, budget, board archiving, plan entitlements, and realtime
-follow. See [web work unit 6](docs/17-web-planner-client-ui.md) for the working
-planner and client interface.
+Approval APIs are described in [work unit 7](docs/18-backend-approvals.md).
+Starter kits, approval controls in the web app, budget, board archiving, plan
+entitlements, and realtime follow. See [web work unit 6](docs/17-web-planner-client-ui.md)
+for the working planner and client interface.
 
 ## Code style
 
