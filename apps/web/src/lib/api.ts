@@ -15,7 +15,14 @@ import {
   presignResponseSchema,
   assetUrlResponseSchema,
   sectionResponseSchema,
+  plannerApprovalListSchema,
+  clientApprovalListSchema,
+  decisionResponseSchema,
+  type DecisionRequest,
+  type AssignContactRequest,
 } from '@moodboard/contracts';
+
+import { clientContext } from './client-context';
 
 export const API_URL = import.meta.env.VITE_API_URL || 'http://127.0.0.1:3001';
 
@@ -35,12 +42,16 @@ export async function request<T>(
   schema: z.ZodType<T>,
   init: RequestInit = {},
 ): Promise<T> {
+  const context = path.startsWith('/client/') ? clientContext() : null;
   const response = await fetch(`${API_URL}${path}`, {
     ...init,
     credentials: 'include',
     headers: { ...(init.body ? { 'Content-Type': 'application/json' } : {}), ...init.headers },
   });
   const body: unknown = response.status === 204 ? null : await response.json().catch(() => null);
+  if (context !== null && context !== clientContext()) {
+    throw new DOMException('Client context changed', 'AbortError');
+  }
   if (!response.ok) {
     const message =
       typeof body === 'object' && body && 'message' in body && typeof body.message === 'string'
@@ -70,8 +81,14 @@ export const contacts = (id: string) =>
   request(`/clients/${id}/contacts`, z.array(contactResponseSchema));
 export const participants = (id: string) =>
   request(`/boards/${id}/participants`, z.array(contactParticipantResponseSchema));
-export const clientBoard = () => request('/client/board', boardDetailResponseSchema);
-export const clientItems = () => request('/client/board/items', itemListResponseSchema);
+export const clientBoard = (signal?: AbortSignal) =>
+  request('/client/board', boardDetailResponseSchema, { signal });
+export const clientItems = (signal?: AbortSignal) =>
+  request('/client/board/items', itemListResponseSchema, { signal });
+export const plannerApprovals = (id: string, signal?: AbortSignal) =>
+  request(`/boards/${id}/approvals`, plannerApprovalListSchema, { signal });
+export const clientApprovals = (signal?: AbortSignal) =>
+  request('/client/board/approvals', clientApprovalListSchema, { signal });
 
 export const api = {
   login: (input: unknown) =>
@@ -129,10 +146,15 @@ export const api = {
       body: json({ name, ...(email ? { email } : {}) }),
     }),
   removeContact: (id: string) => request(`/contacts/${id}`, noContent, { method: 'DELETE' }),
-  assign: (bid: string, contactId: string, expiresAt: string | null) =>
+  assign: (
+    bid: string,
+    contactId: string,
+    role: AssignContactRequest['role'],
+    expiresAt: string | null,
+  ) =>
     request(`/boards/${bid}/participants`, contactParticipantResponseSchema, {
       method: 'POST',
-      body: json({ contactId, role: 'viewer', expiresAt }),
+      body: json({ contactId, role, expiresAt }),
     }),
   updateParticipant: (bid: string, pid: string, input: unknown) =>
     request(`/boards/${bid}/participants/${pid}`, contactParticipantResponseSchema, {
@@ -148,9 +170,15 @@ export const api = {
       method: 'POST',
       body: '{}',
     }),
-  exchange: (token: string) =>
+  exchange: (token: string, signal?: AbortSignal) =>
     request(`/share/${encodeURIComponent(token)}`, shareResponseSchema, {
+      signal,
       headers: { Accept: 'application/json' },
+    }),
+  decide: (input: DecisionRequest) =>
+    request('/client/board/approvals/decisions', decisionResponseSchema, {
+      method: 'POST',
+      body: json(input),
     }),
   clientLogout: () => request('/client/logout', noContent, { method: 'POST', body: '{}' }),
 };

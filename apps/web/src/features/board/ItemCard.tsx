@@ -20,6 +20,7 @@ export function ItemCardView({
   action,
   price,
   priority = false,
+  footer,
 }: {
   title: string;
   note?: string | null;
@@ -34,6 +35,7 @@ export function ItemCardView({
   action?: ReactNode;
   price?: string;
   priority?: boolean;
+  footer?: ReactNode;
 }) {
   return (
     <article
@@ -105,6 +107,7 @@ export function ItemCardView({
         )}
         {price && <p className="mt-3 text-sm font-semibold tabular-nums">{price}</p>}
       </div>
+      {footer && <div className="border-t border-line p-4">{footer}</div>}
     </article>
   );
 }
@@ -116,6 +119,7 @@ export function ItemCard({
   onSelect,
   onDrag,
   onKeyMove,
+  footer,
 }: {
   item: ItemResponse;
   client?: boolean;
@@ -123,6 +127,7 @@ export function ItemCard({
   onSelect?: () => void;
   onDrag?: (event: PointerEvent<HTMLButtonElement>) => void;
   onKeyMove?: (dx: number, dy: number) => void;
+  footer?: ReactNode;
 }) {
   const [broken, setBroken] = useState(false);
   const media = useQuery({
@@ -157,6 +162,7 @@ export function ItemCard({
       : undefined;
   return (
     <ItemCardView
+      footer={footer}
       title={
         item.title ||
         (item.kind === 'link'

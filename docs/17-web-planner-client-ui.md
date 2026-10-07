@@ -13,7 +13,9 @@ flowchart LR
   B --> C["6B: Planner canvas and media"]
   C --> D["6C: Client management and viewer"]
   D --> E["7: approvals API"]
-  E --> F["Next: approval UI, event kit, budget, PDF, billing"]
+  E --> F["8: shared database mappings"]
+  F --> G["9: web approvals"]
+  G --> H["Next: event kit, budget, PDF, billing"]
 ```
 
 Editable source: [web-build-order.mmd](diagrams/web-build-order.mmd).
@@ -46,8 +48,8 @@ images, links, and item positions; its Share panel associates a business client,
 assigns contacts, and manages board-specific links. `/clients` manages clients
 and contacts. `/share/:token` exchanges a contact link and immediately replaces
 the token URL with `/client/boards/:boardId`, where a contact can read only the
-bound board. New assignments use viewer role; existing approver assignments
-remain viewable until approvals UI arrives.
+bound board. New assignments default to viewer and can select approver.
+[Work unit 9](20-web-approvals.md) adds client decisions and planner feedback.
 
 The root enables SSR for the public page. Authenticated, authentication, share,
 and client routes retain `ssr: false`. Each root App instance creates its own
@@ -138,3 +140,8 @@ assigned board and show only authorized items and prices. Verify expired,
 rotated, and revoked links, concurrent edit conflicts, image processing states,
 keyboard movement, and desktop/mobile layouts. Media integration tests use
 test-only MinIO; the running application uses Cloudflare R2.
+
+## Follow-up: approval controls
+
+[Web work unit 9](20-web-approvals.md) adds approver sharing, contextual client
+decisions, planner feedback, status filters and version-safe approval queries.

@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { createFileRoute } from '@tanstack/react-router';
 import { useQueryClient } from '@tanstack/react-query';
 import { LogOut } from 'lucide-react';
@@ -6,6 +6,11 @@ import { EmptyState, SecondaryButton, Skeleton } from '@moodboard/ui';
 import { q } from '../lib/hooks';
 import { api } from '../lib/api';
 import { ItemCard } from '../features/board/ItemCard';
+import type { DecisionRequest } from '@moodboard/contracts';
+import { clientContext, changeClientContext } from '../lib/client-context';
+import { ClientReview } from '../features/board/ClientReview';
+import { matchingApproval } from '../features/board/approvals';
+import { ApprovalStatus, ApprovalReadNotice } from '../features/board/ApprovalStatus';
 
 export const Route = createFileRoute('/client/boards/$boardId')({
   ssr: false,
@@ -21,25 +26,63 @@ export const Route = createFileRoute('/client/boards/$boardId')({
 function ClientViewer() {
   const { boardId } = Route.useParams();
   const qc = useQueryClient();
-  const detail = q.clientBoard();
-  const list = q.clientItems();
   const [section, setSection] = useState<string | null>(null);
   const [contextChanged, setContextChanged] = useState(false);
+  const initialContext = useRef(clientContext());
+  const contextActive = !contextChanged && initialContext.current === clientContext();
+  const detail = q.clientBoard(contextActive);
+  const list = q.clientItems(contextActive);
+  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const attempts = useRef(new Map<string, Readonly<DecisionRequest>>());
+  const validContext =
+    !contextChanged &&
+    initialContext.current === clientContext() &&
+    detail.data?.board.id === boardId;
+  const approvals = q.clientApprovals(boardId, !!validContext);
+  const syncing =
+    !!approvals.data &&
+    !!list.data?.some((item) => !item.deletedAt && !matchingApproval(item, approvals.data));
+  const ready = approvals.isSuccess && !syncing;
+  const mismatched = useRef('');
+  const selected = list.data?.find((item) => item.id === selectedId && !item.deletedAt);
+  async function refresh() {
+    await qc.invalidateQueries({ queryKey: ['client'] });
+  }
+  useEffect(() => {
+    const signature = syncing
+      ? JSON.stringify([
+          list.data?.map((item) => [item.id, item.version]),
+          approvals.data?.map((approval) => [approval.itemId, approval.itemVersion]),
+        ])
+      : '';
+    if (signature && signature !== mismatched.current && validContext) {
+      mismatched.current = signature;
+      void Promise.all([list.refetch(), approvals.refetch()]);
+    } else if (!signature) {
+      mismatched.current = '';
+    }
+  }, [syncing, validContext, list, approvals]);
   useEffect(() => {
     const onChange = (event: StorageEvent) => {
       if (event.key === 'moodboard-client-context') {
-        qc.removeQueries({ queryKey: ['client'] });
         setContextChanged(true);
+        setSelectedId(null);
+        attempts.current.clear();
+        void qc.cancelQueries({ queryKey: ['client'] });
+        qc.removeQueries({ queryKey: ['client'] });
       }
     };
     window.addEventListener('storage', onChange);
     return () => window.removeEventListener('storage', onChange);
   }, [qc]);
-  const mismatch = contextChanged || (detail.data && detail.data.board.id !== boardId);
+  const mismatch =
+    contextChanged ||
+    initialContext.current !== clientContext() ||
+    (detail.data && detail.data.board.id !== boardId);
   if (mismatch) {
     return (
       <main className="mx-auto max-w-md p-8">
-        <h1 className="text-2xl font-semibold">This browser opened another board.</h1>
+        <h1 className="text-2xl font-semibold">This browser opened another invitation.</h1>
         <p className="mt-3 text-sm text-muted">
           Reopen this board from its original invitation link.
         </p>
@@ -90,10 +133,7 @@ function ClientViewer() {
                 /* session may have ended */
               }
               qc.removeQueries({ queryKey: ['client'] });
-              localStorage.setItem(
-                'moodboard-client-context',
-                JSON.stringify({ boardId: null, nonce: crypto.randomUUID() }),
-              );
+              changeClientContext(null);
               window.location.replace('/login');
             }}
           >
@@ -119,6 +159,12 @@ function ClientViewer() {
             </button>
           ))}
         </div>
+        <ApprovalReadNotice
+          loading={approvals.isPending}
+          error={approvals.isError}
+          syncing={syncing}
+          retry={() => void refresh()}
+        />
         <p className="mt-6 text-sm text-muted">
           {section ? detail.data.sections.find((s) => s.id === section)?.name : 'Unsorted'} /{' '}
           {visible.length} items
@@ -126,7 +172,26 @@ function ClientViewer() {
         {visible.length ? (
           <div className="mt-4 grid items-start gap-5 sm:grid-cols-2">
             {visible.map((item) => (
-              <ItemCard key={item.id} item={item} client />
+              <ItemCard
+                key={item.id}
+                item={item}
+                client
+                footer={
+                  <div className="flex items-center justify-between gap-3">
+                    {ready && matchingApproval(item, approvals.data) ? (
+                      <ApprovalStatus status={matchingApproval(item, approvals.data)!.status} />
+                    ) : (
+                      <span className="text-xs text-muted">Status unavailable</span>
+                    )}
+                    <SecondaryButton
+                      aria-label={`Review ${item.title ?? 'item'}`}
+                      onClick={() => setSelectedId(item.id)}
+                    >
+                      Review
+                    </SecondaryButton>
+                  </div>
+                }
+              />
             ))}
           </div>
         ) : (
@@ -136,6 +201,18 @@ function ClientViewer() {
           />
         )}
       </div>
+      {selected && (
+        <ClientReview
+          key={selected.id}
+          item={selected}
+          approval={ready ? matchingApproval(selected, approvals.data) : undefined}
+          role={detail.data.role}
+          available={ready}
+          refresh={refresh}
+          close={() => setSelectedId(null)}
+          attempts={attempts.current}
+        />
+      )}
       <footer className="mx-auto max-w-3xl border-t border-line p-5 text-xs text-muted">
         Moodboard · A place to decide together
       </footer>

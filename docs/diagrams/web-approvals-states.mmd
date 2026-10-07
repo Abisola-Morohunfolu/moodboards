@@ -1,0 +1,18 @@
+stateDiagram-v2
+    [*] --> Pending
+    Pending --> NeedsChanges: Rejection or swap request
+    NeedsChanges --> Pending: Current roster has no negative decision
+    Pending --> Approved: All current approvers approve
+    NeedsChanges --> Approved: All current approvers approve
+    Approved --> Pending: Item content version changes
+    NeedsChanges --> Pending: Item content version changes
+
+    note right of NeedsChanges
+        Swap requested takes display precedence over rejection.
+        Clients may revise decisions before completed sign-off.
+    end note
+
+    note right of Approved
+        Sign-off is frozen for this version.
+        New approvers and item movement do not reopen it.
+    end note

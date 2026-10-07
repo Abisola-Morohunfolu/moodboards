@@ -249,4 +249,14 @@ Use the existing outlined empty mark with a short title, explanatory copy, and a
 - **Don't** repeat canvas dots outside the real working canvas.
 - **Don't** add scroll spectacle or ignore reduced-motion preferences.
 - **Don't** hardcode light surfaces or assume primary button text is white in dark mode.
-- **Don't** imply approvals, budgets, billing, public discovery, or personal sharing are implemented.
+- **Don't** imply budgets, billing, public discovery, or personal sharing are implemented. Approvals apply to client-associated business boards.
+
+## Approval review
+
+Use compact text status labels on item cards. Editors and owners filter the current
+section by approval status and read contact feedback inside the existing inspector.
+Client cards open a protected-focus Review sheet with item content, board approval,
+and the contact's own decision. Keep these two states explicitly labeled. Approve
+is primary; Reject and Request swap are secondary actions. Pair negative status
+color with readable text. Comments wrap and preserve line breaks; approval errors
+never hide otherwise usable board content. Signed-off versions are read-only.
