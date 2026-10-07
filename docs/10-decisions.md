@@ -205,3 +205,14 @@ exchange remains available; old API links opened as HTML redirect to the web
 entry. Removing the token from history limits accidental disclosure.
 
 **D53. Phase 1 client approvals require every current approver, then freeze a completed sign-off.** Business boards with a client association use approvals without generic module controls. A contact decision is tied to an item content version. While pending or rejected, the current approver roster determines the result; once all approve, a new contact cannot reopen that version. A planner content edit resets the item to pending and starts a new round. Decision IDs and result snapshots make retries safe, while contact-specific reads expose no peer feedback.
+
+
+**D54. Share scalar TypeORM entities and keep queries with their runtime owner.**
+The 18 active tables have explicit camelCase mappings in `packages/database`,
+registered by the common data-source factory. API and worker repositories use
+manager-bound query builders for ordinary operations and focused parameterized
+SQL for Postgres-specific operations. Foreign-key IDs stay scalar; migrations
+own schema constraints and indexes. Versions, timestamps, and deletion markers
+are ordinary columns, so moves cannot silently increment content versions or
+hide tombstones. Response mappers remain feature-owned. There is no automatic
+schema synchronization, ORM upgrade, or generic repository abstraction.

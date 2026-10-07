@@ -10,21 +10,11 @@ import { AccessService } from '../access/access.service';
 import { BoardAccess } from '../access/access.repository';
 import { ContactPrincipal } from '../access/contact-access';
 import { BoardEventWriter } from '../../platform/events/board-event.writer';
-import { ApprovalStateRow, ApprovalsRepository, DecisionRecord } from './approvals.repository';
+import { decisionResponse } from './approvals.mapper';
+import { ApprovalStateRow, ApprovalsRepository } from './approvals.repository';
 
-function coreState(status: ApprovalStateRow['status']): ApprovalStateRow['core_state'] {
+function coreState(status: ApprovalStateRow['status']): ApprovalStateRow['coreState'] {
   return status === 'approved' ? 'approved' : status === 'pending' ? 'pending' : 'rejected';
-}
-
-function decisionResponse(row: DecisionRecord) {
-  return {
-    id: row.id,
-    itemId: row.item_id,
-    itemVersion: row.item_version,
-    status: row.status,
-    comment: row.comment,
-    decidedAt: row.decided_at.toISOString(),
-  };
 }
 
 @Injectable()
@@ -36,7 +26,7 @@ export class ApprovalsService {
   ) {}
 
   private assertAvailable(access: BoardAccess): void {
-    if (access.board.workspace_type !== 'business' || access.board.client_id === null) {
+    if (access.board.workspaceType !== 'business' || access.board.clientId === null) {
       throw new NotFoundException('Approvals not available');
     }
   }
@@ -70,18 +60,15 @@ export class ApprovalsService {
     if (state.status === status) {
       return state;
     }
-    const next = { ...state, status, core_state: coreState(status) };
-    await manager.query(
-      'update approval_states set status=$2,core_state=$3,updated_at=now() where item_id=$1',
-      [state.item_id, next.status, next.core_state],
-    );
-    if (state.core_state !== next.core_state) {
+    const next = { ...state, status, coreState: coreState(status) };
+    await this.repository.updateState(manager, next);
+    if (state.coreState !== next.coreState) {
       await this.events.append(manager, boardId, actorId, {
         type: 'approval.state_changed',
         payload: {
-          itemId: state.item_id,
-          itemVersion: state.item_version,
-          coreState: next.core_state,
+          itemId: state.itemId,
+          itemVersion: state.itemVersion,
+          coreState: next.coreState,
         },
       });
     }
@@ -91,9 +78,9 @@ export class ApprovalsService {
   // Callers hold the board lock. Approved item versions are deliberately frozen.
   async reconcileBoard(manager: EntityManager, boardId: string, actorId: string | null) {
     const candidates = await this.repository.reconciliationCandidates(manager, boardId);
-    for (const { next_status, ...state } of candidates) {
-      if (state.status !== next_status) {
-        await this.applyState(manager, boardId, state, next_status, actorId);
+    for (const { nextStatus, ...state } of candidates) {
+      if (state.status !== nextStatus) {
+        await this.applyState(manager, boardId, state, nextStatus, actorId);
       }
     }
   }
@@ -105,18 +92,17 @@ export class ApprovalsService {
     version: number,
     actorId: string | null,
   ) {
-    const [previous] = await manager.query<ApprovalStateRow[]>(
-      'select item_id,item_version,status,core_state from approval_states where item_id=$1 for update',
-      [itemId],
-    );
+    const previous = await this.repository.lockState(manager, itemId);
     if (!previous) {
       return;
     }
-    await manager.query(
-      "update approval_states set item_version=$2,status='pending',core_state='pending',updated_at=now() where item_id=$1",
-      [itemId, version],
-    );
-    if (previous.core_state !== 'pending') {
+    await this.repository.updateState(manager, {
+      ...previous,
+      itemVersion: version,
+      status: 'pending',
+      coreState: 'pending',
+    });
+    if (previous.coreState !== 'pending') {
       await this.events.append(manager, boardId, actorId, {
         type: 'approval.state_changed',
         payload: { itemId, itemVersion: version, coreState: 'pending' },
@@ -131,12 +117,9 @@ export class ApprovalsService {
     contactId?: string,
   ): Promise<PlannerApproval[] | ClientApproval[]> {
     await this.reconcileBoard(manager, boardId, actorId);
-    const items: { id: string; version: number }[] = await manager.query(
-      'select id,version from items where board_id=$1 and deleted_at is null order by z_order collate "C",id',
-      [boardId],
-    );
+    const items = await this.repository.itemVersions(manager, boardId);
     const states = new Map(
-      (await this.repository.states(manager, boardId)).map((s) => [s.item_id, s]),
+      (await this.repository.states(manager, boardId)).map((s) => [s.itemId, s]),
     );
     const decisions = await this.repository.latestDecisions(manager, boardId);
     return items.map((item) => {
@@ -145,20 +128,20 @@ export class ApprovalsService {
         itemId: item.id,
         itemVersion: item.version,
         status: state?.status ?? 'pending',
-        coreState: state?.core_state ?? 'pending',
+        coreState: state?.coreState ?? 'pending',
       } as const;
-      const itemDecisions = decisions.filter((d) => d.item_id === item.id);
+      const itemDecisions = decisions.filter((d) => d.itemId === item.id);
       if (contactId) {
-        const own = itemDecisions.find((d) => d.participant_id === contactId);
+        const own = itemDecisions.find((d) => d.participantId === contactId);
         return { ...base, ownDecision: own ? decisionResponse(own) : null };
       }
       return {
         ...base,
         decisions: itemDecisions.map((d) => ({
           ...decisionResponse(d),
-          participantId: d.participant_id,
-          contactId: d.contact_id,
-          contactName: d.contact_name,
+          participantId: d.participantId,
+          contactId: d.contactId,
+          contactName: d.contactName,
         })),
       };
     }) as PlannerApproval[] | ClientApproval[];
@@ -196,15 +179,15 @@ export class ApprovalsService {
       'board.view',
       async (manager, access) => {
         this.assertAvailable(access);
-        if (access.role !== 'approver' || access.board.participant_role !== 'approver') {
+        if (access.role !== 'approver' || access.board.participantRole !== 'approver') {
           throw new ForbiddenException('Approver assignment required');
         }
         const old = await this.repository.existingDecision(manager, input.id);
         if (old) {
           if (
-            old.participant_id !== contact.participantId ||
-            old.item_id !== input.itemId ||
-            old.item_version !== input.itemVersion ||
+            old.participantId !== contact.participantId ||
+            old.itemId !== input.itemId ||
+            old.itemVersion !== input.itemVersion ||
             old.status !== input.status ||
             old.comment !== (input.comment ?? null)
           ) {
@@ -214,20 +197,17 @@ export class ApprovalsService {
             created: false,
             body: {
               approval: {
-                itemId: old.item_id,
-                itemVersion: old.item_version,
-                status: old.result_status!,
-                coreState: old.result_core_state!,
+                itemId: old.itemId,
+                itemVersion: old.itemVersion,
+                status: old.resultStatus!,
+                coreState: old.resultCoreState!,
                 ownDecision: decisionResponse(old),
               },
               decision: decisionResponse(old),
             },
           };
         }
-        const [item] = await manager.query<{ version: number }[]>(
-          'select version from items where board_id=$1 and id=$2 and deleted_at is null',
-          [contact.boardId, input.itemId],
-        );
+        const item = await this.repository.itemVersion(manager, contact.boardId, input.itemId);
         if (!item) {
           throw new NotFoundException('Item not found');
         }
@@ -235,21 +215,17 @@ export class ApprovalsService {
           throw new ConflictException('Item version conflict');
         }
         const state = await this.repository.state(manager, input.itemId, item.version);
-        if (state.core_state === 'approved') {
+        if (state.coreState === 'approved') {
           throw new ConflictException('Approved item is signed off');
         }
-        const [inserted] = await manager.query<DecisionRecord[]>(
-          `insert into approval_decisions(id,item_id,item_version,participant_id,status,comment)
-          values($1,$2,$3,$4,$5,$6) returning *`,
-          [
-            input.id,
-            input.itemId,
-            item.version,
-            contact.participantId,
-            input.status,
-            input.comment ?? null,
-          ],
-        );
+        const inserted = await this.repository.insertDecision(manager, {
+          id: input.id,
+          itemId: input.itemId,
+          itemVersion: item.version,
+          participantId: contact.participantId,
+          status: input.status,
+          comment: input.comment ?? null,
+        });
         const status = await this.calculate(manager, contact.boardId, input.itemId, item.version);
         await this.events.append(manager, contact.boardId, contact.participantId, {
           type: 'item.decided',
@@ -262,10 +238,7 @@ export class ApprovalsService {
           status,
           contact.participantId,
         );
-        await manager.query(
-          'update approval_decisions set result_status=$2,result_core_state=$3 where id=$1',
-          [input.id, next.status, next.core_state],
-        );
+        await this.repository.updateDecisionResult(manager, input.id, next);
         const decision = decisionResponse({ ...inserted!, comment: input.comment ?? null });
         return {
           created: true,
@@ -274,7 +247,7 @@ export class ApprovalsService {
               itemId: input.itemId,
               itemVersion: item.version,
               status: next.status,
-              coreState: next.core_state,
+              coreState: next.coreState,
               ownDecision: decision,
             },
             decision,

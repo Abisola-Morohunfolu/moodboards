@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { AuthRepository } from '../apps/api/src/features/auth/auth.repository';
 import { AuthService } from '../apps/api/src/features/auth/auth.service';
+import { GoogleAttemptsRepository } from '../apps/api/src/features/auth/google-attempts.repository';
 import { GoogleService } from '../apps/api/src/features/auth/google.service';
 import { PasswordService } from '../apps/api/src/features/auth/password.service';
 import { tokenHash } from '../apps/api/src/features/auth/cookies';
@@ -99,8 +100,8 @@ describe('Atomic account onboarding and shared auth state', () => {
     ]);
   });
   it('two API instances consume OAuth state exactly once', async () => {
-    const first = new GoogleService(source, config);
-    const second = new GoogleService(source, config);
+    const first = new GoogleService(new GoogleAttemptsRepository(source), config);
+    const second = new GoogleService(new GoogleAttemptsRepository(source), config);
     const { state } = await first.start();
     const results = await Promise.allSettled([
       first.consume(state, state),
@@ -116,7 +117,7 @@ describe('Atomic account onboarding and shared auth state', () => {
     await source.query(
       "insert into google_auth_attempts values ('expired', 'nonce', 'verifier', now()-interval '1 second')",
     );
-    const { state } = await new GoogleService(source, config).start();
+    const { state } = await new GoogleService(new GoogleAttemptsRepository(source), config).start();
     expect(await source.query('select state_hash from google_auth_attempts')).toEqual([
       { state_hash: tokenHash(state) },
     ]);

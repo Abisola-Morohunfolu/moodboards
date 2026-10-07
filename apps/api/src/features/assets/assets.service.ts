@@ -3,42 +3,24 @@ import {
   BadRequestException,
   ConflictException,
   Injectable,
-  NotFoundException,
   ServiceUnavailableException,
 } from '@nestjs/common';
 import { PresignRequest } from '@moodboard/contracts';
-import { DataSource, EntityManager } from 'typeorm';
+import { EntityManager } from 'typeorm';
+import { AssetEntity } from '@moodboard/database';
+import { AssetsRepository } from './assets.repository';
 import { AccessService } from '../access/access.service';
 import { MediaStorage } from '../../platform/storage/storage.module';
 import { BoardPrincipal } from '../access/contact-access';
-export interface AssetRecord {
-  id: string;
-  board_id: string;
-  storage_key: string;
-  thumbnail_key: string | null;
-  mime_type: 'image/jpeg' | 'image/png' | 'image/webp';
-  bytes: number;
-  width: number | null;
-  height: number | null;
-  palette: string[] | null;
-  status: 'pending' | 'ready' | 'failed';
-}
 @Injectable()
 export class AssetsService {
   constructor(
-    private readonly source: DataSource,
+    private readonly repository: AssetsRepository,
     private readonly access: AccessService,
     private readonly media: MediaStorage,
   ) {}
-  async load(manager: EntityManager, boardId: string, id: string): Promise<AssetRecord> {
-    const rows: AssetRecord[] = await manager.query(
-      'select * from assets where board_id=$1 and id=$2',
-      [boardId, id],
-    );
-    if (!rows[0]) {
-      throw new NotFoundException('Asset not found');
-    }
-    return rows[0];
+  async load(manager: EntityManager, boardId: string, id: string): Promise<AssetEntity> {
+    return this.repository.load(manager, boardId, id);
   }
   async presign(userId: string, boardId: string, input: PresignRequest) {
     await this.access.withBoard(userId, boardId, 'item.create', async () => undefined, false);
@@ -60,16 +42,13 @@ export class AssetsService {
       boardId,
       'item.create',
       async (manager) => {
-        await manager.query(
-          'insert into assets (id,board_id,storage_key,mime_type,bytes) values ($1,$2,$3,$4,$5)',
-          [id, boardId, key, input.mime, input.bytes],
-        );
+        await this.repository.reserve(manager, id, boardId, key, input);
       },
       false,
     );
     return { assetId: id, ...signed };
   }
-  async assertUploaded(userId: string, boardId: string, id: string): Promise<AssetRecord> {
+  async assertUploaded(userId: string, boardId: string, id: string): Promise<AssetEntity> {
     const asset = await this.access.withBoard(
       userId,
       boardId,
@@ -85,37 +64,31 @@ export class AssetsService {
     }
     let object;
     try {
-      object = await this.media.require().head(asset.storage_key);
+      object = await this.media.require().head(asset.storageKey);
     } catch {
       throw new ServiceUnavailableException('Media storage unavailable');
     }
     if (!object) {
       throw new ConflictException('Upload is not complete');
     }
-    if (object.mime !== asset.mime_type || object.bytes !== asset.bytes) {
+    if (object.mime !== asset.mimeType || object.bytes !== asset.bytes) {
       throw new BadRequestException('Uploaded object does not match reservation');
     }
     return asset;
   }
   async url(userId: BoardPrincipal, id: string, variant: 'original' | 'thumbnail') {
-    const rows: { board_id: string }[] = await this.source.query(
-      'select board_id from assets where id=$1',
-      [id],
-    );
-    if (!rows[0]) {
-      throw new NotFoundException('Asset not found');
-    }
+    const boardId = await this.repository.boardId(id);
     const asset = await this.access.withBoard(
       userId,
-      rows[0].board_id,
+      boardId,
       'board.view',
-      (manager) => this.load(manager, rows[0]!.board_id, id),
+      (manager) => this.load(manager, boardId, id),
       false,
     );
     if (asset.status !== 'ready') {
       throw new ConflictException('Asset is not ready');
     }
-    const key = variant === 'original' ? asset.storage_key : asset.thumbnail_key;
+    const key = variant === 'original' ? asset.storageKey : asset.thumbnailKey;
     if (!key || key.startsWith('staging/')) {
       throw new ConflictException('Asset is not ready');
     }
@@ -127,12 +100,12 @@ export class AssetsService {
       }
       signed = await this.media
         .require()
-        .presignGet(key, variant === 'thumbnail' ? 'image/webp' : asset.mime_type);
+        .presignGet(key, variant === 'thumbnail' ? 'image/webp' : asset.mimeType);
     } catch {
       throw new ServiceUnavailableException('Media storage unavailable');
     }
     // Signing is local, but access is rechecked so awaited adapters never reuse stale permission.
-    await this.access.withBoard(userId, asset.board_id, 'board.view', async () => undefined, false);
+    await this.access.withBoard(userId, asset.boardId, 'board.view', async () => undefined, false);
     return signed;
   }
 }

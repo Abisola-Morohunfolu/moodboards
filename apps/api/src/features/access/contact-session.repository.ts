@@ -1,8 +1,9 @@
 import { Injectable } from '@nestjs/common';
 import { DataSource } from 'typeorm';
+import { ContactSessionEntity } from '@moodboard/database';
 import { tokenHash } from '../auth/cookies';
 import { ContactLinks } from './contact-links';
-import { ContactPrincipal, contactSessionQuery } from './contact-access';
+import { ContactPrincipal, ContactSessionIdentity, contactSessionQuery } from './contact-access';
 
 @Injectable()
 export class ContactSessionRepository {
@@ -16,21 +17,21 @@ export class ContactSessionRepository {
       return undefined;
     }
     const hash = tokenHash(token);
-    const [row] = await this.source.query<
-      { participant_id: string; contact_id: string; board_id: string }[]
-    >(contactSessionQuery, [hash, fingerprint]);
+    const row = await contactSessionQuery(
+      this.source.manager,
+      hash,
+      fingerprint,
+    ).getRawOne<ContactSessionIdentity>();
     return row
-      ? {
-          kind: 'contact',
-          participantId: row.participant_id,
-          contactId: row.contact_id,
-          boardId: row.board_id,
-          sessionHash: hash,
-          secretFingerprint: fingerprint,
-        }
+      ? { kind: 'contact', ...row, sessionHash: hash, secretFingerprint: fingerprint }
       : undefined;
   }
   async revoke(hash: string): Promise<void> {
-    await this.source.query('delete from contact_sessions where token_hash=$1', [hash]);
+    await this.source.manager
+      .createQueryBuilder()
+      .delete()
+      .from(ContactSessionEntity)
+      .where('token_hash = :hash', { hash })
+      .execute();
   }
 }

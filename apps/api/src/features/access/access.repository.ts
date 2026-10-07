@@ -1,81 +1,91 @@
 import { randomUUID } from 'node:crypto';
 import { Injectable, NotFoundException } from '@nestjs/common';
-import { BoardResponse, BoardRole } from '@moodboard/contracts';
-import { EntityManager } from 'typeorm';
+import { BoardRole } from '@moodboard/contracts';
+import {
+  BoardEntity,
+  BoardParticipantEntity,
+  WorkspaceEntity,
+  WorkspaceMemberEntity,
+  entityFromRow,
+} from '@moodboard/database';
+import { EntityManager, SelectQueryBuilder } from 'typeorm';
 import { resolveAccountBoardRole } from './board-role';
 import { ContactPrincipal, lockContactParents, assertContactSession } from './contact-access';
+import { boardResponse } from './access.mapper';
 
-export interface BoardRecord {
-  id: string;
-  workspace_id: string;
-  client_id: string | null;
-  kit_id: string;
-  title: string;
-  layout: 'canvas' | 'grid';
-  currency: string | null;
-  general_access: 'restricted' | 'workspace' | 'link';
-  workspace_default_role: BoardRole;
-  show_prices_to: BoardRole;
-  event_seq: string;
-  locked_at: Date | null;
-  archived_at: Date | null;
-  created_by: string;
-  created_at: Date;
-  workspace_type: 'personal' | 'business';
-  workspace_role: 'owner' | 'staff' | 'partner' | null;
-  participant_id: string | null;
-  participant_role: BoardRole | null;
-  participant_revoked_at: Date | null;
-  participant_expires_at: Date | null;
+interface AccessProjection {
+  workspaceType: WorkspaceEntity['type'];
+  workspaceRole: WorkspaceMemberEntity['role'] | null;
+  participantId: string | null;
+  participantRole: BoardRole | null;
+  participantRevokedAt: Date | null;
+  participantExpiresAt: Date | null;
 }
+export type BoardRecord = BoardEntity & AccessProjection;
 export interface BoardAccess {
   board: BoardRecord;
   role: BoardRole;
   participantId: string | null;
 }
-const accessQuery = `select b.*, w.type as workspace_type, m.role as workspace_role,
-  p.id as participant_id, p.role as participant_role,
-  p.revoked_at as participant_revoked_at, p.expires_at as participant_expires_at
-  from boards b join workspaces w on w.id=b.workspace_id
-  left join workspace_members m on m.workspace_id=b.workspace_id and m.user_id=$1
-  left join board_participants p on p.board_id=b.id and p.user_id=$1`;
-
+function accessProjection(query: SelectQueryBuilder<BoardEntity>) {
+  return query
+    .select('board.*')
+    .addSelect('workspace.type', 'workspaceType')
+    .addSelect('participant.id', 'participantId')
+    .addSelect('participant.role', 'participantRole')
+    .addSelect('participant.revokedAt', 'participantRevokedAt')
+    .addSelect('participant.expiresAt', 'participantExpiresAt');
+}
+function accountQuery(manager: EntityManager, userId: string) {
+  return accessProjection(
+    manager
+      .createQueryBuilder(BoardEntity, 'board')
+      .innerJoin(WorkspaceEntity, 'workspace', 'workspace.id = board.workspaceId')
+      .leftJoin(
+        WorkspaceMemberEntity,
+        'member',
+        'member.workspaceId = board.workspaceId AND member.userId = :userId',
+        { userId },
+      )
+      .leftJoin(
+        BoardParticipantEntity,
+        'participant',
+        'participant.boardId = board.id AND participant.userId = :userId',
+        { userId },
+      ),
+  ).addSelect('member.role', 'workspaceRole');
+}
+function accessRecord(
+  manager: EntityManager,
+  row: Record<string, unknown> & AccessProjection,
+): BoardRecord {
+  return {
+    ...entityFromRow(manager, BoardEntity, row),
+    workspaceType: row.workspaceType,
+    workspaceRole: row.workspaceRole,
+    participantId: row.participantId,
+    participantRole: row.participantRole,
+    participantRevokedAt: row.participantRevokedAt,
+    participantExpiresAt: row.participantExpiresAt,
+  };
+}
 export function accountRole(board: BoardRecord): BoardRole | null {
   return resolveAccountBoardRole({
-    workspaceType: board.workspace_type,
-    workspaceRole: board.workspace_role,
-    generalAccess: board.general_access,
-    workspaceDefaultRole: board.workspace_default_role,
+    workspaceType: board.workspaceType,
+    workspaceRole: board.workspaceRole,
+    generalAccess: board.generalAccess,
+    workspaceDefaultRole: board.workspaceDefaultRole,
     participant:
-      board.participant_id === null
+      board.participantId === null
         ? null
         : {
-            role: board.participant_role,
-            revokedAt: board.participant_revoked_at,
-            expiresAt: board.participant_expires_at,
+            role: board.participantRole,
+            revokedAt: board.participantRevokedAt,
+            expiresAt: board.participantExpiresAt,
           },
-    lockedAt: board.locked_at,
-    archivedAt: board.archived_at,
+    lockedAt: board.lockedAt,
+    archivedAt: board.archivedAt,
   });
-}
-export function boardResponse(board: BoardRecord): BoardResponse {
-  return {
-    id: board.id,
-    workspaceId: board.workspace_id,
-    clientId: board.client_id,
-    kitId: board.kit_id,
-    title: board.title,
-    layout: board.layout,
-    currency: board.currency,
-    generalAccess: board.general_access,
-    workspaceDefaultRole: board.workspace_default_role,
-    showPricesTo: board.show_prices_to,
-    eventSeq: board.event_seq,
-    lockedAt: board.locked_at?.toISOString() ?? null,
-    archivedAt: board.archived_at?.toISOString() ?? null,
-    createdBy: board.created_by,
-    createdAt: board.created_at.toISOString(),
-  };
 }
 
 @Injectable()
@@ -89,21 +99,26 @@ export class AccessRepository {
       throw new NotFoundException('Board not found');
     }
     await lockContactParents(manager, principal.contactId);
-    await manager.query('select id from boards where id=$1 for update', [boardId]);
+    await this.lockBoard(manager, boardId);
     await assertContactSession(manager, principal);
-    const [board] = await manager.query<BoardRecord[]>(
-      `select b.*, w.type as workspace_type,
-      null as workspace_role, p.id as participant_id, p.role as participant_role,
-      p.revoked_at as participant_revoked_at, p.expires_at as participant_expires_at
-      from boards b join workspaces w on w.id=b.workspace_id
-      join board_participants p on p.board_id=b.id where b.id=$1 and p.id=$2`,
-      [boardId, principal.participantId],
-    );
-    if (!board) {
+    const row = await accessProjection(
+      manager
+        .createQueryBuilder(BoardEntity, 'board')
+        .innerJoin(WorkspaceEntity, 'workspace', 'workspace.id = board.workspaceId')
+        .innerJoin(BoardParticipantEntity, 'participant', 'participant.boardId = board.id'),
+    )
+      .addSelect('NULL', 'workspaceRole')
+      .where('board.id = :boardId AND participant.id = :participantId', {
+        boardId,
+        participantId: principal.participantId,
+      })
+      .getRawOne<Record<string, unknown> & AccessProjection>();
+    if (!row) {
       throw new NotFoundException('Board not found');
     }
+    const board = accessRecord(manager, row);
     const role =
-      board.locked_at || board.archived_at || board.participant_role === 'viewer'
+      board.lockedAt || board.archivedAt || board.participantRole === 'viewer'
         ? 'viewer'
         : 'approver';
     return { board, role, participantId: principal.participantId };
@@ -115,36 +130,45 @@ export class AccessRepository {
     lock = false,
   ): Promise<BoardAccess> {
     if (lock) {
-      await manager.query('select id from boards where id=$1 for update', [boardId]);
+      await this.lockBoard(manager, boardId);
     }
-    const rows: BoardRecord[] = await manager.query(`${accessQuery} where b.id=$2`, [
-      userId,
-      boardId,
-    ]);
-    const board = rows[0];
+    const row = await accountQuery(manager, userId)
+      .where('board.id = :boardId', { boardId })
+      .getRawOne<Record<string, unknown> & AccessProjection>();
+    const board = row ? accessRecord(manager, row) : null;
     const role = board ? accountRole(board) : null;
     if (!board || !role) {
       throw new NotFoundException('Board not found');
     }
-    return { board, role, participantId: board.participant_id };
+    return { board, role, participantId: board.participantId };
   }
   async list(manager: EntityManager, userId: string, workspaceId?: string) {
     if (workspaceId !== undefined) {
-      const members: unknown[] = await manager.query(
-        'select 1 from workspace_members where workspace_id=$1 and user_id=$2',
-        [workspaceId, userId],
-      );
-      if (members.length === 0) {
+      const member = await manager
+        .createQueryBuilder(WorkspaceMemberEntity, 'member')
+        .where('member.workspaceId = :workspaceId AND member.userId = :userId', {
+          workspaceId,
+          userId,
+        })
+        .getExists();
+      if (!member) {
         throw new NotFoundException('Workspace not found');
       }
     }
-    const rows: BoardRecord[] = await manager.query(
-      `${accessQuery}
-      where ${workspaceId === undefined ? 'p.id is not null' : 'b.workspace_id=$2 and m.user_id is not null'}
-      order by b.created_at, b.id`,
-      workspaceId === undefined ? [userId] : [userId, workspaceId],
-    );
-    return rows.flatMap((board) => {
+    const query = accountQuery(manager, userId);
+    if (workspaceId === undefined) {
+      query.where('participant.id IS NOT NULL');
+    } else {
+      query.where('board.workspaceId = :workspaceId AND member.userId IS NOT NULL', {
+        workspaceId,
+      });
+    }
+    const rows = await query
+      .orderBy('board.createdAt')
+      .addOrderBy('board.id')
+      .getRawMany<Record<string, unknown> & AccessProjection>();
+    return rows.flatMap((row) => {
+      const board = accessRecord(manager, row);
       const role = accountRole(board);
       return role === null ? [] : [{ ...boardResponse(board), role }];
     });
@@ -154,18 +178,32 @@ export class AccessRepository {
     userId: string,
     boardId: string,
   ): Promise<string> {
-    const inserted: { id: string }[] = await manager.query(
-      `insert into board_participants (id, board_id, user_id)
-      values ($1,$2,$3) on conflict (board_id, user_id) where user_id is not null do nothing returning id`,
-      [randomUUID(), boardId, userId],
-    );
-    if (inserted[0]) {
-      return inserted[0].id;
+    // Preserve the partial-index conflict target: unrelated identity constraints
+    // must still fail instead of being silently ignored.
+    const result = await manager
+      .createQueryBuilder()
+      .insert()
+      .into(BoardParticipantEntity)
+      .values({ id: randomUUID(), boardId, userId })
+      .onConflict('(board_id, user_id) WHERE user_id IS NOT NULL DO NOTHING')
+      .returning(['id'])
+      .execute();
+    if (result.raw[0]) {
+      return result.raw[0].id;
     }
-    const existing: { id: string }[] = await manager.query(
-      'select id from board_participants where board_id=$1 and user_id=$2',
-      [boardId, userId],
-    );
-    return existing[0]!.id;
+    const existing = await manager
+      .createQueryBuilder(BoardParticipantEntity, 'participant')
+      .select(['participant.id'])
+      .where('participant.boardId = :boardId AND participant.userId = :userId', { boardId, userId })
+      .getOne();
+    return existing!.id;
+  }
+  private async lockBoard(manager: EntityManager, boardId: string) {
+    await manager
+      .createQueryBuilder(BoardEntity, 'board')
+      .select(['board.id'])
+      .where('board.id = :boardId', { boardId })
+      .setLock('pessimistic_write')
+      .getOne();
   }
 }

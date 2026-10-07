@@ -1,6 +1,6 @@
 import { ConflictException, Injectable, UnauthorizedException } from '@nestjs/common';
 import { DataSource, EntityManager, QueryFailedError } from 'typeorm';
-import { withTransaction } from '@moodboard/database';
+import { resourceLock, withTransaction } from '@moodboard/database';
 import { AccountResponse, LoginRequest, SignupRequest } from '@moodboard/contracts';
 import { AuthRepository } from './auth.repository';
 import { PasswordService } from './password.service';
@@ -43,8 +43,8 @@ export class AuthService {
   }
   async login(input: LoginRequest): Promise<{ account: AccountResponse; token: string }> {
     const user = await this.auth.credentials(input.email);
-    const valid = await this.passwords.verify(input.password, user?.password_hash ?? null);
-    if (!user || !valid || user.deleted_at) {
+    const valid = await this.passwords.verify(input.password, user?.passwordHash ?? null);
+    if (!user || !valid || user.deletedAt) {
       throw new UnauthorizedException('Invalid email or password');
     }
     return withTransaction(this.source, (manager) => this.signIn(manager, user.id));
@@ -53,11 +53,9 @@ export class AuthService {
     try {
       return await withTransaction(this.source, async (manager) => {
         // Serialize callbacks for one Google identity, including first-time signup.
-        await manager.query('select pg_advisory_xact_lock(hashtextextended($1, 0))', [
-          identity.subject,
-        ]);
+        await resourceLock(manager, identity.subject);
         const existing = await this.auth.googleUser(manager, identity.subject);
-        if (existing?.deleted_at) {
+        if (existing?.deletedAt) {
           throw new UnauthorizedException('Sign in required');
         }
         const id =

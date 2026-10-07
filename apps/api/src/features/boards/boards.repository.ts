@@ -1,8 +1,13 @@
 import { randomUUID } from 'node:crypto';
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { CreateBoardRequest, UpdateBoardRequest } from '@moodboard/contracts';
+import {
+  BoardEntity,
+  BoardParticipantEntity,
+  WorkspaceMemberEntity,
+  definedPatch,
+} from '@moodboard/database';
 import { EntityManager } from 'typeorm';
-import { patchColumns } from '../../database/patch-columns';
 import { lockBusinessClient } from '../clients/clients.repository';
 
 @Injectable()
@@ -11,48 +16,53 @@ export class BoardsRepository {
     if (input.clientId) {
       await lockBusinessClient(manager, userId, input.clientId, input.workspaceId);
     }
-    const membership: unknown[] = await manager.query(
-      `select m.role from workspace_members m
-      where m.workspace_id=$1 and m.user_id=$2 for key share`,
-      [input.workspaceId, userId],
-    );
-    if (membership.length === 0) {
+    const membership = await manager
+      .createQueryBuilder(WorkspaceMemberEntity, 'member')
+      .where('member.workspaceId = :workspaceId AND member.userId = :userId', {
+        workspaceId: input.workspaceId,
+        userId,
+      })
+      .setLock('for_key_share')
+      .getOne();
+    if (!membership) {
       throw new NotFoundException('Workspace not found');
     }
     const boardId = randomUUID();
     const participantId = randomUUID();
-    await manager.query(
-      `insert into boards (id, workspace_id, title, kit_id, layout, currency, created_by, client_id)
-      values ($1,$2,$3,'blank','canvas',$4,$5,$6)`,
-      [
-        boardId,
-        input.workspaceId,
-        input.title,
-        input.currency ?? null,
-        userId,
-        input.clientId ?? null,
-      ],
-    );
-    await manager.query(
-      `insert into board_participants (id, board_id, user_id, role)
-      values ($1,$2,$3,'owner')`,
-      [participantId, boardId, userId],
-    );
+    await manager
+      .createQueryBuilder()
+      .insert()
+      .into(BoardEntity)
+      .values({
+        id: boardId,
+        workspaceId: input.workspaceId,
+        title: input.title,
+        kitId: 'blank',
+        layout: 'canvas',
+        currency: input.currency ?? null,
+        createdBy: userId,
+        clientId: input.clientId ?? null,
+      })
+      .execute();
+    await manager
+      .createQueryBuilder()
+      .insert()
+      .into(BoardParticipantEntity)
+      .values({ id: participantId, boardId, userId, role: 'owner' })
+      .execute();
     return { boardId, participantId };
   }
   async update(manager: EntityManager, boardId: string, input: UpdateBoardRequest) {
-    const patch = patchColumns(input, {
-      title: 'title',
-      currency: 'currency',
-      clientId: 'client_id',
-    });
+    const patch = definedPatch(input, ['title', 'currency', 'clientId'] as const);
     if (!patch.changedFields.length) {
       return [];
     }
-    await manager.query(`update boards set ${patch.assignments} where id=$1`, [
-      boardId,
-      ...patch.values,
-    ]);
+    await manager
+      .createQueryBuilder()
+      .update(BoardEntity)
+      .set(patch.values)
+      .where('id = :boardId', { boardId })
+      .execute();
     return patch.changedFields;
   }
 }

@@ -1,0 +1,14 @@
+erDiagram
+    WORKSPACES ||--o{ BOARDS : contains
+    WORKSPACES ||--o{ CLIENTS : contains
+    CLIENTS ||--o{ CLIENT_CONTACTS : has
+    CLIENTS o|--o{ BOARDS : associated
+    BOARDS ||--o{ BOARD_PARTICIPANTS : identifies
+    CLIENT_CONTACTS o|--o{ BOARD_PARTICIPANTS : assigned
+    BOARDS ||--o{ ITEMS : contains
+    BOARD_PARTICIPANTS ||--o{ ITEMS : creates
+    ITEMS ||--o| APPROVAL_STATES : tracks
+    ITEMS ||--o{ APPROVAL_DECISIONS : records
+    BOARD_PARTICIPANTS ||--o{ APPROVAL_DECISIONS : makes
+    BOARDS ||--o{ BOARD_EVENTS : emits
+    BOARD_EVENTS ||--o{ BOARD_EVENT_DELIVERIES : dispatches

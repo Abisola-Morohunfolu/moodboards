@@ -8,3 +8,11 @@ Health endpoints listen on `127.0.0.1:3002` by default.
 See [work unit 4](../../docs/15-backend-media-workers.md) for diagrams, queue
 retry boundaries, configuration, cleanup rules, and verification commands.
 Realtime publication and other processors remain later work.
+
+
+Dispatcher, media, and maintenance repositories own persistence. Orchestration
+keeps transaction boundaries, resource-lock order, queue/storage calls, and retry
+policy. Repositories use the shared scalar entities from `@moodboard/database`
+and build queries from the supplied manager. Delivery claims and event pruning
+remain explicit Postgres SQL. See
+[database mapping work unit](../../docs/19-backend-database-mapping.md).

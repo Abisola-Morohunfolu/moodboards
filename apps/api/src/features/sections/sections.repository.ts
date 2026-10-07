@@ -1,29 +1,30 @@
 import { randomUUID } from 'node:crypto';
 import { Injectable, NotFoundException } from '@nestjs/common';
-import { CreateSectionRequest, UpdateSectionRequest, SectionResponse } from '@moodboard/contracts';
+import { CreateSectionRequest, UpdateSectionRequest } from '@moodboard/contracts';
 import { EntityManager } from 'typeorm';
-import { patchColumns } from '../../database/patch-columns';
+import { ItemEntity, SectionEntity, definedPatch, entityFromRow } from '@moodboard/database';
+import { sectionResponse } from './sections.mapper';
 
-const sectionColumns = 'id, board_id as "boardId", name, position';
 @Injectable()
 export class SectionsRepository {
-  list(manager: EntityManager, boardId: string): Promise<SectionResponse[]> {
-    return manager.query(
-      `select ${sectionColumns} from sections where board_id=$1 order by position collate "C", id`,
-      [boardId],
-    );
+  async list(manager: EntityManager, boardId: string) {
+    const sections = await manager
+      .createQueryBuilder(SectionEntity, 'section')
+      .where('section.boardId = :boardId', { boardId })
+      .orderBy('section.position COLLATE "C"')
+      .addOrderBy('section.id')
+      .getMany();
+    return sections.map(sectionResponse);
   }
-  async create(
-    manager: EntityManager,
-    boardId: string,
-    input: CreateSectionRequest,
-  ): Promise<SectionResponse> {
-    const rows: SectionResponse[] = await manager.query(
-      `insert into sections (id, board_id, name, position)
-      values ($1,$2,$3,$4) returning ${sectionColumns}`,
-      [randomUUID(), boardId, input.name, input.position],
-    );
-    return rows[0]!;
+  async create(manager: EntityManager, boardId: string, input: CreateSectionRequest) {
+    const result = await manager
+      .createQueryBuilder()
+      .insert()
+      .into(SectionEntity)
+      .values({ id: randomUUID(), boardId, name: input.name, position: input.position })
+      .returning('*')
+      .execute();
+    return sectionResponse(entityFromRow(manager, SectionEntity, result.raw[0]));
   }
   async update(
     manager: EntityManager,
@@ -31,24 +32,36 @@ export class SectionsRepository {
     sectionId: string,
     input: UpdateSectionRequest,
   ) {
-    const patch = patchColumns(input, { name: 'name', position: 'position' }, 3);
-    const rows: SectionResponse[] = await manager.query(
-      `with updated as (update sections set ${patch.assignments}
-      where board_id=$1 and id=$2 returning ${sectionColumns}) select * from updated`,
-      [boardId, sectionId, ...patch.values],
-    );
-    if (!rows[0]) {
+    const patch = definedPatch(input, ['name', 'position'] as const);
+    const result = await manager
+      .createQueryBuilder()
+      .update(SectionEntity)
+      .set(patch.values)
+      .where('board_id = :boardId AND id = :sectionId', { boardId, sectionId })
+      .returning('*')
+      .execute();
+    if (!result.raw[0]) {
       throw new NotFoundException('Section not found');
     }
-    return { section: rows[0], changedFields: patch.changedFields };
+    return {
+      section: sectionResponse(entityFromRow(manager, SectionEntity, result.raw[0])),
+      changedFields: patch.changedFields,
+    };
   }
   async delete(manager: EntityManager, boardId: string, sectionId: string): Promise<void> {
     await this.assertOnBoard(manager, boardId, sectionId);
-    await manager.query(
-      'update items set section_id=null, updated_at=now() where board_id=$1 and section_id=$2',
-      [boardId, sectionId],
-    );
-    await manager.query('delete from sections where board_id=$1 and id=$2', [boardId, sectionId]);
+    await manager
+      .createQueryBuilder()
+      .update(ItemEntity)
+      .set({ sectionId: null, updatedAt: () => 'now()' })
+      .where('board_id = :boardId AND section_id = :sectionId', { boardId, sectionId })
+      .execute();
+    await manager
+      .createQueryBuilder()
+      .delete()
+      .from(SectionEntity)
+      .where('board_id = :boardId AND id = :sectionId', { boardId, sectionId })
+      .execute();
   }
   async assertOnBoard(
     manager: EntityManager,
@@ -58,11 +71,11 @@ export class SectionsRepository {
     if (sectionId === undefined || sectionId === null) {
       return;
     }
-    const rows: unknown[] = await manager.query(
-      'select 1 from sections where board_id=$1 and id=$2',
-      [boardId, sectionId],
-    );
-    if (rows.length === 0) {
+    const found = await manager
+      .createQueryBuilder(SectionEntity, 'section')
+      .where('section.boardId = :boardId AND section.id = :sectionId', { boardId, sectionId })
+      .getExists();
+    if (!found) {
       throw new NotFoundException('Section not found');
     }
   }

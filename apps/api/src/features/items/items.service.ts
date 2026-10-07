@@ -29,7 +29,7 @@ export class ItemsService {
       'board.view',
       async (manager, access) => {
         const items = await this.repository.list(manager, boardId);
-        return this.repository.responses(manager, items, access.role, access.board.show_prices_to);
+        return this.repository.responses(manager, items, access.role, access.board.showPricesTo);
       },
       false,
     );
@@ -48,7 +48,7 @@ export class ItemsService {
                   manager,
                   item,
                   access.role,
-                  access.board.show_prices_to,
+                  access.board.showPricesTo,
                 ),
                 created: false,
               }
@@ -78,7 +78,7 @@ export class ItemsService {
               manager,
               existing,
               access.role,
-              access.board.show_prices_to,
+              access.board.showPricesTo,
             ),
             created: false,
           };
@@ -108,7 +108,7 @@ export class ItemsService {
               itemId: item.id,
               kind: input.kind,
               version: item.version,
-              ...(item.asset_id ? { assetId: item.asset_id } : {}),
+              ...(item.assetId ? { assetId: item.assetId } : {}),
               ...(previewId ? { previewId } : {}),
             },
           });
@@ -118,7 +118,7 @@ export class ItemsService {
             manager,
             item,
             access.role,
-            access.board.show_prices_to,
+            access.board.showPricesTo,
           ),
           created,
         };
@@ -131,7 +131,7 @@ export class ItemsService {
     const boardId = await this.repository.boardId(itemId);
     return this.access.withBoard(userId, boardId, 'item.edit', async (manager, access) => {
       const current = await this.repository.get(manager, boardId, itemId);
-      if (current.deleted_at !== null) {
+      if (current.deletedAt !== null) {
         throw new NotFoundException('Item not found');
       }
       const { item, changedFields } = await this.repository.update(manager, boardId, itemId, input);
@@ -143,7 +143,7 @@ export class ItemsService {
             manager,
             current,
             access.role,
-            access.board.show_prices_to,
+            access.board.showPricesTo,
           ),
         });
       }
@@ -151,7 +151,7 @@ export class ItemsService {
         type: 'item.updated',
         payload: { itemId, version: item.version, changedFields },
       });
-      if (access.board.workspace_type === 'business' && access.board.client_id !== null) {
+      if (access.board.workspaceType === 'business' && access.board.clientId !== null) {
         await this.approvals?.resetItem(
           manager,
           boardId,
@@ -160,19 +160,14 @@ export class ItemsService {
           access.participantId,
         );
       }
-      return await this.repository.response(
-        manager,
-        item,
-        access.role,
-        access.board.show_prices_to,
-      );
+      return await this.repository.response(manager, item, access.role, access.board.showPricesTo);
     });
   }
   async move(userId: string, itemId: string, input: MoveNoteRequest) {
     const boardId = await this.repository.boardId(itemId);
     return this.access.withBoard(userId, boardId, 'item.move', async (manager, access) => {
       const current = await this.repository.get(manager, boardId, itemId);
-      if (current.deleted_at !== null) {
+      if (current.deletedAt !== null) {
         throw new NotFoundException('Item not found');
       }
       await this.sections.assertOnBoard(manager, boardId, input.sectionId);
@@ -181,12 +176,7 @@ export class ItemsService {
         type: 'item.moved',
         payload: { itemId, changedFields },
       });
-      return await this.repository.response(
-        manager,
-        item,
-        access.role,
-        access.board.show_prices_to,
-      );
+      return await this.repository.response(manager, item, access.role, access.board.showPricesTo);
     });
   }
   async delete(userId: string, itemId: string) {

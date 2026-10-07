@@ -27,8 +27,8 @@ export function redisConnection(value: string) {
 export function jobId(job: MediaJob) {
   return `media-${job.entityId}-${createHash('sha256').update(job.generation).digest('hex').slice(0, 24)}`;
 }
-export function generation(row: { expires_at: Date | null }): string {
-  return row.expires_at?.toISOString() ?? 'initial';
+export function generation(row: { expiresAt: Date | null }): string {
+  return row.expiresAt?.toISOString() ?? 'initial';
 }
 export const jobOptions: JobsOptions = {
   attempts: 10,

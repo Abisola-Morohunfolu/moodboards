@@ -3,7 +3,8 @@ import { AssignContactRequest, UpdateContactParticipantRequest } from '@moodboar
 import { AccessService } from '../access/access.service';
 import { ContactLinks } from '../access/contact-links';
 import { BoardEventWriter } from '../../platform/events/board-event.writer';
-import { ParticipantsRepository, participantResponse } from './participants.repository';
+import { ParticipantsRepository } from './participants.repository';
+import { participantResponse } from './participants.mapper';
 import { lockContactParents } from '../access/contact-access';
 import { ApprovalsService } from '../approvals/approvals.service';
 
@@ -31,13 +32,13 @@ export class ParticipantsService {
       boardId,
       'board.share',
       async (manager, access) => {
-        if (access.board.workspace_type !== 'business') {
+        if (access.board.workspaceType !== 'business') {
           throw new NotFoundException('Contact not found');
         }
         const result = await this.repository.assign(
           manager,
           boardId,
-          access.board.client_id,
+          access.board.clientId,
           userId,
           input,
         );
@@ -112,9 +113,9 @@ export class ParticipantsService {
             type: 'access.changed',
             payload: { participantId: row.id, changedFields: ['linkVersion'] },
           });
-          return { url: this.links.url(row.id, rotated.link_version) };
+          return { url: this.links.url(row.id, rotated.linkVersion) };
         }
-        return { url: this.links.url(row.id, row.link_version) };
+        return { url: this.links.url(row.id, row.linkVersion) };
       },
       action !== 'link',
       (manager) => lockContactParents(manager, contactId),

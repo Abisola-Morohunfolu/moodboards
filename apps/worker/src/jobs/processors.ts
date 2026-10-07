@@ -6,38 +6,22 @@ import { Storage, ObjectTooLarge } from '@moodboard/storage';
 import { generation, QueueName } from '../queues/media';
 import { InvalidMedia, PageFetcher, EgressFetcher } from './egress';
 import { parsePreview, PreviewMetadata } from './preview-parser';
-interface Asset {
-  id: string;
-  board_id: string;
-  storage_key: string;
-  mime_type: string;
-  bytes: number;
-  status: string;
-}
-interface Preview {
-  id: string;
-  url: string;
-  url_hash: Buffer;
-  status: string;
-  expires_at: Date | null;
-}
+import { MediaRepository } from './media.repository';
 export class MediaProcessors {
+  private readonly repository = new MediaRepository();
   constructor(
     readonly source: DataSource,
     readonly storage: Storage,
     readonly fetcher: PageFetcher = new EgressFetcher(),
   ) {}
   async image(job: MediaJob) {
-    const rows: Asset[] = await this.source.query('select * from assets where id=$1', [
-      job.entityId,
-    ]);
-    const asset = rows[0];
+    const asset = await this.repository.asset(this.source.manager, job.entityId);
     if (!asset || asset.status !== 'pending') {
       return;
     }
     let body: Buffer;
     try {
-      body = await this.storage.read(asset.storage_key, asset.bytes);
+      body = await this.storage.read(asset.storageKey, asset.bytes);
     } catch (error) {
       if (error instanceof ObjectTooLarge) {
         throw new InvalidMedia('Image size mismatch');
@@ -52,7 +36,7 @@ export class MediaProcessors {
     let height: number;
     let palette: string[];
     try {
-      if (asset.mime_type === 'image/png') {
+      if (asset.mimeType === 'image/png') {
         for (let offset = 8; offset + 12 <= body.length;) {
           const length = body.readUInt32BE(offset);
           if (body.toString('ascii', offset + 4, offset + 8) === 'acTL') {
@@ -70,7 +54,7 @@ export class MediaProcessors {
       };
       if (
         !info.format ||
-        expected[info.format] !== asset.mime_type ||
+        expected[info.format] !== asset.mimeType ||
         (info.pages ?? 1) > 1 ||
         !info.width ||
         !info.height
@@ -117,20 +101,24 @@ export class MediaProcessors {
       throw new InvalidMedia('Invalid image');
     }
     const attempt = randomUUID();
-    const original = `media/${asset.board_id}/${asset.id}/${attempt}/original`;
-    const thumb = `media/${asset.board_id}/${asset.id}/${attempt}/thumbnail.webp`;
-    await this.storage.put(original, body, asset.mime_type);
+    const original = `media/${asset.boardId}/${asset.id}/${attempt}/original`;
+    const thumb = `media/${asset.boardId}/${asset.id}/${attempt}/thumbnail.webp`;
+    await this.storage.put(original, body, asset.mimeType);
     await this.storage.put(thumb, thumbnail, 'image/webp');
     await withTransaction(this.source, async (manager) => {
-      await manager.query('select id from boards where id=$1 for update', [asset.board_id]);
-      const changed: unknown[] = await manager.query(
-        "with changed as (update assets set storage_key=$2,thumbnail_key=$3,width=$4,height=$5,palette=$6,status='ready' where id=$1 and status='pending' returning id) select id from changed",
-        [asset.id, original, thumb, width, height, palette],
-      );
-      if (changed.length) {
+      await this.repository.lockBoard(manager, asset.boardId);
+      if (
+        await this.repository.readyAsset(manager, asset.id, {
+          storageKey: original,
+          thumbnailKey: thumb,
+          width,
+          height,
+          palette,
+        })
+      ) {
         await appendBoardEvent(
           manager,
-          asset.board_id,
+          asset.boardId,
           null,
           boardEventSchema.parse({ type: 'asset.ready', payload: { assetId: asset.id } }),
         );
@@ -138,14 +126,11 @@ export class MediaProcessors {
     });
   }
   async preview(job: MediaJob) {
-    const [preview]: Preview[] = await this.source.query(
-      'select * from link_previews where id=$1',
-      [job.entityId],
-    );
+    const preview = await this.repository.preview(this.source.manager, job.entityId);
     if (
       !preview ||
       generation(preview) !== job.generation ||
-      (preview.expires_at && preview.expires_at.getTime() > Date.now())
+      (preview.expiresAt && preview.expiresAt.getTime() > Date.now())
     ) {
       return;
     }
@@ -158,21 +143,15 @@ export class MediaProcessors {
       return;
     }
     await withTransaction(this.source, async (manager) => {
-      const [asset]: Asset[] = await manager.query('select * from assets where id=$1', [
-        job.entityId,
-      ]);
+      const asset = await this.repository.asset(manager, job.entityId);
       if (!asset || asset.status !== 'pending') {
         return;
       }
-      await manager.query('select id from boards where id=$1 for update', [asset.board_id]);
-      const changed: unknown[] = await manager.query(
-        "with changed as (update assets set status='failed' where id=$1 and status='pending' returning id) select id from changed",
-        [asset.id],
-      );
-      if (changed.length) {
+      await this.repository.lockBoard(manager, asset.boardId);
+      if (await this.repository.failAsset(manager, asset.id)) {
         await appendBoardEvent(
           manager,
-          asset.board_id,
+          asset.boardId,
           null,
           boardEventSchema.parse({ type: 'asset.failed', payload: { assetId: asset.id } }),
         );
@@ -181,46 +160,25 @@ export class MediaProcessors {
   }
   private async finishPreview(job: MediaJob, metadata: PreviewMetadata | null) {
     await withTransaction(this.source, async (manager) => {
-      const [identity]: Preview[] = await manager.query('select * from link_previews where id=$1', [
-        job.entityId,
-      ]);
+      const identity = await this.repository.preview(manager, job.entityId);
       if (!identity) {
         return;
       }
-      await resourceLock(manager, `preview:${identity.url_hash.toString('hex')}`);
-      const [preview]: Preview[] = await manager.query('select * from link_previews where id=$1', [
-        job.entityId,
-      ]);
+      await resourceLock(manager, `preview:${identity.urlHash.toString('hex')}`);
+      const preview = await this.repository.preview(manager, job.entityId);
       if (
         !preview ||
         generation(preview) !== job.generation ||
-        (preview.expires_at && preview.expires_at.getTime() > Date.now())
+        (preview.expiresAt && preview.expiresAt.getTime() > Date.now())
       ) {
         return;
       }
-      const boards: { id: string }[] = await manager.query(
-        'select b.id from boards b where exists (select 1 from items i where i.board_id=b.id and i.link_preview_id=$1 and i.deleted_at is null) order by b.id for update',
-        [preview.id],
-      );
-      if (metadata) {
-        await manager.query(
-          "update link_previews set title=$2,description=$3,image_url=$4,site_name=$5,status='ready',fetched_at=now(),expires_at=now()+interval '7 days' where id=$1",
-          [preview.id, metadata.title, metadata.description, metadata.imageUrl, metadata.siteName],
-        );
-      } else {
-        await manager.query(
-          "update link_previews set status='failed',fetched_at=now(),expires_at=now()+interval '1 day' where id=$1",
-          [preview.id],
-        );
-      }
+      const boards = await this.repository.lockPreviewBoards(manager, preview.id);
+      await this.repository.finishPreview(manager, preview.id, metadata);
       for (const board of boards) {
         // A delete can commit while the preceding board-lock query waits. Use a fresh
         // statement snapshot after acquiring the lock before emitting a board event.
-        const references: unknown[] = await manager.query(
-          'select 1 from items where board_id=$1 and link_preview_id=$2 and deleted_at is null limit 1',
-          [board.id, preview.id],
-        );
-        if (!references.length) {
+        if (!(await this.repository.hasPreviewReferences(manager, board.id, preview.id))) {
           continue;
         }
         await appendBoardEvent(
