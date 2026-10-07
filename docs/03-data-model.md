@@ -132,6 +132,7 @@ Items, decisions, and events point at participant rows, so people are anonymized
 ### Modules
 
 - A module owns its tables. Module tables point at `boards`, `items`, `sections`, `board_participants`, or their own module's tables, never at another module.
+- Phase 1 client approvals store each decision's item version and result snapshot. Content edits start a new round; approved versions remain signed off when approvers change.
 - Disabling a module hides its data. Nothing is deleted.
 - Module tables are shared by every board, so a module changes them with ordinary migrations that keep existing rows valid. A config change migrates stored `board_modules.config`.
 

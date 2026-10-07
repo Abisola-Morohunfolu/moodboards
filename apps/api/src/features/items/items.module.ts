@@ -6,9 +6,10 @@ import { SectionsModule } from '../sections/sections.module';
 import { BoardItemsController, ItemsController } from './items.controller';
 import { ItemsRepository } from './items.repository';
 import { ItemsService } from './items.service';
+import { ApprovalsModule } from '../approvals/approvals.module';
 
 @Module({
-  imports: [AssetsModule, AccessModule, EventsModule, SectionsModule],
+  imports: [AssetsModule, AccessModule, EventsModule, SectionsModule, ApprovalsModule],
   controllers: [BoardItemsController, ItemsController],
   providers: [ItemsRepository, ItemsService],
   exports: [ItemsService],

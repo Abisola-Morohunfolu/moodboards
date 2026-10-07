@@ -12,8 +12,8 @@ flowchart LR
   A["Backend units 1–5<br/>Implemented"] --> B["6A: Authentication and boards home"]
   B --> C["6B: Planner canvas and media"]
   C --> D["6C: Client management and viewer"]
-  D --> E["Next: approvals and swap requests"]
-  E --> F["Later: event kit, budget, PDF, billing"]
+  D --> E["7: approvals API"]
+  E --> F["Next: approval UI, event kit, budget, PDF, billing"]
 ```
 
 Editable source: [web-build-order.mmd](diagrams/web-build-order.mmd).

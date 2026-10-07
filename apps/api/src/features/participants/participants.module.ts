@@ -4,8 +4,9 @@ import { EventsModule } from '../../platform/events/events.module';
 import { ParticipantsRepository } from './participants.repository';
 import { ParticipantsService } from './participants.service';
 import { ParticipantsController } from './participants.controller';
+import { ApprovalsModule } from '../approvals/approvals.module';
 @Module({
-  imports: [AccessModule, EventsModule],
+  imports: [AccessModule, EventsModule, ApprovalsModule],
   providers: [ParticipantsRepository, ParticipantsService],
   controllers: [ParticipantsController],
 })

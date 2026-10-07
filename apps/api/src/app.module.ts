@@ -12,6 +12,7 @@ import { DatabaseModule } from './database/database.module';
 import { ClientsModule } from './features/clients/clients.module';
 import { ParticipantsModule } from './features/participants/participants.module';
 import { ClientViewModule } from './features/client-view/client-view.module';
+import { ApprovalsModule } from './features/approvals/approvals.module';
 
 @Module({})
 export class AppModule {
@@ -37,6 +38,7 @@ export class AppModule {
         ClientsModule,
         ParticipantsModule,
         ClientViewModule,
+        ApprovalsModule,
       ],
     };
   }

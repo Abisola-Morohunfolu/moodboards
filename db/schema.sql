@@ -341,7 +341,9 @@ create table approval_states (
   item_id    uuid primary key references items(id) on delete cascade,
   status     text not null,
   core_state core_state not null default 'pending',
-  updated_at timestamptz not null default now()
+  updated_at timestamptz not null default now(),
+  item_version integer not null default 1,
+  constraint approval_state_version_positive check (item_version > 0)
 );
 
 create table approval_decisions (
@@ -350,10 +352,14 @@ create table approval_decisions (
   participant_id uuid not null references board_participants(id),
   status         text not null,
   comment        text,
-  decided_at     timestamptz not null default now()
+  decided_at     timestamptz not null default now(),
+  item_version   integer not null default 1,
+  result_status  text,
+  result_core_state core_state,
+  constraint approval_decision_version_positive check (item_version > 0)
 );
 -- The rule reads each decider's latest decision.
-create index approval_decisions_latest on approval_decisions (item_id, participant_id, decided_at desc);
+create index approval_decisions_latest on approval_decisions (item_id, item_version, participant_id, decided_at desc, id desc);
 
 -- Module: budget
 

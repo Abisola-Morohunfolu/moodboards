@@ -8,6 +8,7 @@ import { SectionsRepository } from '../sections/sections.repository';
 import { BoardEventWriter } from '../../platform/events/board-event.writer';
 import { ItemsRepository } from './items.repository';
 import { BoardPrincipal } from '../access/contact-access';
+import { ApprovalsService } from '../approvals/approvals.service';
 
 @Injectable()
 export class ItemsService {
@@ -17,6 +18,7 @@ export class ItemsService {
     private readonly sections: SectionsRepository,
     private readonly events: BoardEventWriter,
     @Optional() private readonly assets?: AssetsService,
+    @Optional() private readonly approvals?: ApprovalsService,
   ) {}
   list(userId: BoardPrincipal, boardId: string) {
     return this.access.withBoard(
@@ -154,6 +156,15 @@ export class ItemsService {
         type: 'item.updated',
         payload: { itemId, version: item.version, changedFields },
       });
+      if (access.board.workspace_type === 'business' && access.board.client_id !== null) {
+        await this.approvals?.resetItem(
+          manager,
+          boardId,
+          itemId,
+          item.version,
+          access.participantId,
+        );
+      }
       return await this.repository.response(
         manager,
         item,

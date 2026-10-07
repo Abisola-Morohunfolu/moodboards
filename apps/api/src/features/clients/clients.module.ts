@@ -8,8 +8,9 @@ import {
   ContactsController,
   WorkspaceClientsController,
 } from './clients.controller';
+import { ApprovalsModule } from '../approvals/approvals.module';
 @Module({
-  imports: [AccessModule, EventsModule],
+  imports: [AccessModule, EventsModule, ApprovalsModule],
   providers: [ClientsRepository, ClientsService],
   controllers: [ClientsController, ContactsController, WorkspaceClientsController],
 })
