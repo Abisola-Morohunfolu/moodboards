@@ -9,7 +9,10 @@ import {
   items,
   clientBoard,
   clientItems,
+  plannerApprovals,
+  clientApprovals,
 } from './api';
+import { clientContext } from './client-context';
 
 const activeInterval = (ms: number) => (document.visibilityState === 'visible' ? ms : false);
 export function useApiAction() {
@@ -62,17 +65,35 @@ export const q = {
       queryKey: ['account', 'board', bid, 'participants'],
       queryFn: () => participants(bid),
     }),
-  clientBoard: () =>
+  approvals: (bid: string, enabled: boolean) =>
     useQuery({
-      queryKey: ['client', 'board'],
-      queryFn: clientBoard,
+      queryKey: ['account', 'board', bid, 'approvals'],
+      queryFn: ({ signal }) => plannerApprovals(bid, signal),
+      enabled,
       retry: false,
       refetchInterval: () => activeInterval(15000),
     }),
-  clientItems: () =>
+  clientApprovals: (bid: string, enabled: boolean) =>
     useQuery({
-      queryKey: ['client', 'items'],
-      queryFn: clientItems,
+      queryKey: ['client', clientContext(), bid, 'approvals'],
+      queryFn: ({ signal }) => clientApprovals(signal),
+      enabled,
+      retry: false,
+      refetchInterval: () => activeInterval(15000),
+    }),
+  clientBoard: (enabled = true) =>
+    useQuery({
+      queryKey: ['client', clientContext(), 'board'],
+      queryFn: ({ signal }) => clientBoard(signal),
+      enabled,
+      retry: false,
+      refetchInterval: () => activeInterval(15000),
+    }),
+  clientItems: (enabled = true) =>
+    useQuery({
+      queryKey: ['client', clientContext(), 'items'],
+      queryFn: ({ signal }) => clientItems(signal),
+      enabled,
       retry: false,
       refetchInterval: (query) =>
         activeInterval(

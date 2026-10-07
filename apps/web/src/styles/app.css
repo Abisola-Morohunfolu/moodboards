@@ -340,3 +340,18 @@ a {
     border-radius: 16px 16px 0 0;
   }
 }
+
+@media (min-width: 768px) {
+  .editor-root {
+    display: flex;
+    height: 100dvh;
+    flex-direction: column;
+  }
+  .editor-root > header {
+    flex-shrink: 0;
+  }
+  .editor-root .editor-stage {
+    height: auto;
+    flex: 1;
+  }
+}

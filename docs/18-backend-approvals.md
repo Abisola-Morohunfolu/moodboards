@@ -5,7 +5,8 @@ item starts pending. Only a live contact assignment with `approver` role can
 decide; viewer contacts can read aggregate states. Account sessions never grant
 decision rights, including when an account and contact cookie are both present.
 The first version uses a fixed `all` rule. Generic module enablement, personal
-board decisions, and web controls follow later.
+board decisions follow later. [Web work unit 9](20-web-approvals.md) implements
+the client and planner controls.
 
 ## HTTP contracts
 

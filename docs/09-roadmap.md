@@ -3,7 +3,8 @@
 Implementation note: backend work units 1–5 and 7 and web work unit 6 are
 complete. Backend work unit 8 adds shared entity mappings and query builders
 across the API and worker; see [database cleanup](19-backend-database-mapping.md).
-Web approval controls, budget, export, and billing follow.
+Web work unit 9 completes [client approval controls](20-web-approvals.md).
+The events kit, budget, export, and billing follow.
 
 Estimates assume one full-stack developer working part time, about 15 hours a week.
 

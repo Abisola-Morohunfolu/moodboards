@@ -1,0 +1,20 @@
+sequenceDiagram
+    participant P as Planner
+    participant W as Web app
+    participant A as Existing API
+    participant C as Client
+
+    P->>W: Assign contact as Approver and copy link
+    W->>A: Create or update participant
+    A-->>W: Assignment and board-specific link
+    C->>W: Open link
+    W->>A: Exchange link for contact session
+    W->>A: Read board, items, and client approvals
+    A-->>W: Effective role and versioned approval states
+    C->>W: Review item and submit decision
+    W->>A: Decision UUID, item version, status, comment
+    A-->>W: Recorded decision and aggregate result
+    W-->>C: Confirm saved decision
+    P->>W: Open item inspector
+    W->>A: Read planner approvals
+    A-->>W: Contact decisions and comments

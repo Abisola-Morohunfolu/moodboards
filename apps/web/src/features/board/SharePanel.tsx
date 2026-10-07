@@ -3,6 +3,7 @@ import { useState, type FormEvent } from 'react';
 import { X, Copy, RotateCw, UserPlus, Trash2 } from 'lucide-react';
 import { Dialog, Field, PrimaryButton, SecondaryButton } from '@moodboard/ui';
 import { api } from '../../lib/api';
+import type { AssignContactRequest } from '@moodboard/contracts';
 import { q, useApiAction } from '../../lib/hooks';
 
 export function SharePanel({
@@ -26,6 +27,7 @@ export function SharePanel({
   const [copied, setCopied] = useState('');
   const [contactId, setContactId] = useState('');
   const [expiry, setExpiry] = useState('');
+  const [role, setRole] = useState<AssignContactRequest['role']>('viewer');
   async function refresh() {
     await Promise.all([
       qc.invalidateQueries({ queryKey: ['account', 'board', boardId] }),
@@ -40,10 +42,10 @@ export function SharePanel({
     setError('');
     try {
       await perform(fn);
-      await refresh();
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : 'Could not complete action');
     } finally {
+      await refresh();
       setBusy(false);
     }
   }
@@ -63,11 +65,15 @@ export function SharePanel({
       const row = await api.assign(
         boardId,
         contactId,
+        role,
         expiry ? new Date(expiry).toISOString() : null,
       );
-      await copy(row.id);
+      const result = await api.link(boardId, row.id);
+      await navigator.clipboard.writeText(result.url);
+      setCopied(row.id);
       setContactId('');
       setExpiry('');
+      setRole('viewer');
     });
   }
   return (
@@ -140,7 +146,7 @@ export function SharePanel({
             </a>
           </div>
           <form onSubmit={assign} className="mt-6 flex flex-col gap-3">
-            <h3 className="text-base font-semibold">Invite a viewer</h3>
+            <h3 className="text-base font-semibold">Invite a contact</h3>
             <select
               aria-label="Contact"
               required
@@ -155,6 +161,20 @@ export function SharePanel({
                 </option>
               ))}
             </select>
+            <label className="flex flex-col gap-1.5 text-sm font-semibold">
+              Role
+              <select
+                aria-label="Contact role"
+                value={role}
+                disabled={busy}
+                onChange={(event) => setRole(event.target.value as AssignContactRequest['role'])}
+                className="min-h-11 border border-line bg-surface px-3 font-normal"
+              >
+                <option value="viewer">Viewer</option>
+                <option value="approver">Approver</option>
+              </select>
+            </label>
+            <p className="text-sm text-muted">Approvers can approve, reject, or request a swap.</p>
             <Field
               label="Link expires (optional)"
               type="datetime-local"
@@ -187,9 +207,11 @@ export function SharePanel({
                       {p.revokedAt ? (
                         <SecondaryButton
                           disabled={busy}
-                          onClick={() => action(() => api.assign(boardId, p.contactId, null))}
+                          onClick={() =>
+                            action(() => api.assign(boardId, p.contactId, p.role, null))
+                          }
                         >
-                          Restore
+                          Restore as {p.role}
                         </SecondaryButton>
                       ) : (
                         <>
@@ -219,6 +241,26 @@ export function SharePanel({
                       )}
                     </div>
                   </div>
+                  {!p.revokedAt && (
+                    <label className="mt-3 flex flex-col gap-1 text-sm">
+                      Role
+                      <select
+                        aria-label={`Role for ${contactList.data?.find((c) => c.id === p.contactId)?.name ?? 'contact'}`}
+                        value={p.role}
+                        disabled={busy}
+                        onChange={(event) => {
+                          const nextRole = event.currentTarget.value;
+                          void action(() =>
+                            api.updateParticipant(boardId, p.id, { role: nextRole }),
+                          );
+                        }}
+                        className="min-h-11 border border-line bg-surface px-3"
+                      >
+                        <option value="viewer">Viewer</option>
+                        <option value="approver">Approver</option>
+                      </select>
+                    </label>
+                  )}
                   {!p.revokedAt && (
                     <form
                       className="mt-3 flex flex-wrap items-end gap-2 text-xs text-muted"
@@ -251,7 +293,7 @@ export function SharePanel({
                 </div>
               ))}
             {people.data?.length === 0 && (
-              <p className="mt-3 text-sm text-muted">No client viewers yet.</p>
+              <p className="mt-3 text-sm text-muted">No client contacts yet.</p>
             )}
           </div>
         </>

@@ -216,3 +216,12 @@ own schema constraints and indexes. Versions, timestamps, and deletion markers
 are ordinary columns, so moves cannot silently increment content versions or
 hide tombstones. Response mappers remain feature-owned. There is no automatic
 schema synchronization, ORM upgrade, or generic repository abstraction.
+
+**D55. Keep web approvals contextual and confirm decisions through the server.**
+Client cards open a focused Review sheet; planners read contact feedback in the
+existing item inspector with section-scoped status filters. A decision submission
+captures an immutable UUID and item version. Uncertain outcomes retry the same
+payload, while conflicts retain the comment and require review of refreshed
+content. Contact-context generations fence caches and late callbacks when another
+invitation changes the browser's contact cookie. This completes the Phase 1
+workflow without a separate feedback dashboard or realtime infrastructure.

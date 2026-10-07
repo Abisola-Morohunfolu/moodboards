@@ -16,13 +16,20 @@ import {
   Trash2,
   X,
 } from 'lucide-react';
-import type { ItemResponse } from '@moodboard/contracts';
+import type { ItemResponse, PlannerApproval } from '@moodboard/contracts';
 import { Dialog, EmptyState, Field, PrimaryButton, SecondaryButton, Skeleton } from '@moodboard/ui';
 import { api, ApiError } from '../../lib/api';
 import { q, useApiAction } from '../../lib/hooks';
 import { ItemCard } from './ItemCard';
 import { ThemeToggle } from '../../components/Theme';
 import { SharePanel } from './SharePanel';
+import {
+  ApprovalStatus,
+  ApprovalFilters,
+  ApprovalReadNotice,
+  PlannerFeedback,
+} from './ApprovalStatus';
+import { matchingApproval, sectionApprovals, type ApprovalFilter } from './approvals';
 
 const key = () => `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 7)}`;
 const message = (error: unknown) =>
@@ -47,10 +54,38 @@ export function Editor({ boardId }: { boardId: string }) {
   const queuedMoves = useRef(new Map<string, Promise<unknown>>());
   const draftItemId = useRef<string | null>(null);
   const canvasViewport = useRef<HTMLDivElement>(null);
-  const visible = list.data?.filter((i) => !i.deletedAt && i.sectionId === section) ?? [];
+  const [approvalFilter, setApprovalFilter] = useState<ApprovalFilter>('all');
   const selected = list.data?.find((i) => i.id === selectedId);
   const editable = detail.data?.role === 'editor' || detail.data?.role === 'owner';
   const shareable = detail.data?.role === 'owner';
+  const approvalEnabled = !!detail.data?.board.clientId && editable;
+  const approvals = q.approvals(boardId, approvalEnabled);
+  const approvalSyncing =
+    !!approvals.data &&
+    !!list.data?.some((item) => !item.deletedAt && !matchingApproval(item, approvals.data));
+  const approvalReady = approvalEnabled && approvals.isSuccess && !approvalSyncing;
+  const review = sectionApprovals(
+    list.data ?? [],
+    approvalReady ? approvals.data : undefined,
+    section,
+    approvalReady ? approvalFilter : 'all',
+  );
+  const visible = review.items;
+  const mismatched = useRef('');
+  useEffect(() => {
+    const signature = approvalSyncing
+      ? JSON.stringify([
+          list.data?.map((item) => [item.id, item.version]),
+          approvals.data?.map((approval) => [approval.itemId, approval.itemVersion]),
+        ])
+      : '';
+    if (signature && signature !== mismatched.current) {
+      mismatched.current = signature;
+      void Promise.all([list.refetch(), approvals.refetch()]);
+    } else if (!signature) {
+      mismatched.current = '';
+    }
+  }, [approvalSyncing, list, approvals]);
   useEffect(() => {
     draftItemId.current = null;
   }, [composer]);
@@ -285,6 +320,7 @@ export function Editor({ boardId }: { boardId: string }) {
   const chooseSection = (id: string | null) => {
     setSection(id);
     setSelectedId(null);
+    setApprovalFilter('all');
   };
   const addTools = editable && (
     <>
@@ -300,7 +336,7 @@ export function Editor({ boardId }: { boardId: string }) {
     </>
   );
   return (
-    <main className="min-h-dvh bg-paper">
+    <main className="editor-root min-h-dvh bg-paper">
       <header className="flex h-16 items-center justify-between gap-3 border-b border-line bg-surface px-3 md:px-5">
         <div className="flex min-w-0 items-center gap-2">
           <Link
@@ -381,6 +417,27 @@ export function Editor({ boardId }: { boardId: string }) {
           </button>
         )}
       </div>
+      {approvalEnabled && (
+        <>
+          <ApprovalReadNotice
+            loading={approvals.isPending}
+            error={approvals.isError}
+            syncing={approvalSyncing}
+            retry={() => {
+              void Promise.all([list.refetch(), approvals.refetch()]);
+            }}
+          />
+          <ApprovalFilters
+            filter={approvalReady ? approvalFilter : 'all'}
+            counts={review.counts}
+            disabled={!approvalReady}
+            onChange={(value) => {
+              setApprovalFilter(value);
+              setSelectedId(null);
+            }}
+          />
+        </>
+      )}
       <div className="editor-stage">
         {sectionsOpen && (
           <nav className="section-nav" aria-label="Board sections">
@@ -462,6 +519,11 @@ export function Editor({ boardId }: { boardId: string }) {
                 >
                   <ItemCard
                     item={item}
+                    footer={
+                      approvalReady && matchingApproval(item, approvals.data) ? (
+                        <ApprovalStatus status={matchingApproval(item, approvals.data)!.status} />
+                      ) : undefined
+                    }
                     selected={selectedId === item.id}
                     onSelect={() => setSelectedId(item.id)}
                     onDrag={editable ? (e) => drag(e, item) : undefined}
@@ -484,11 +546,17 @@ export function Editor({ boardId }: { boardId: string }) {
           {!visible.length && (
             <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
               <div className="max-w-xs text-center">
-                <h2 className="text-xl font-semibold">Space for inspiration</h2>
+                <h2 className="text-xl font-semibold">
+                  {approvalFilter !== 'all' && approvalReady
+                    ? 'No items match this status'
+                    : 'Space for inspiration'}
+                </h2>
                 <p className="mt-3 text-sm leading-6 text-muted">
-                  {editable
-                    ? 'Add an image, link, or note to start this section.'
-                    : 'Ideas will appear here when they are added.'}
+                  {approvalFilter !== 'all' && approvalReady
+                    ? 'Choose another approval status to see more items.'
+                    : editable
+                      ? 'Add an image, link, or note to start this section.'
+                      : 'Ideas will appear here when they are added.'}
                 </p>
               </div>
             </div>
@@ -532,17 +600,28 @@ export function Editor({ boardId }: { boardId: string }) {
               <ItemCard
                 key={item.id}
                 item={item}
+                footer={
+                  approvalReady && matchingApproval(item, approvals.data) ? (
+                    <ApprovalStatus status={matchingApproval(item, approvals.data)!.status} />
+                  ) : undefined
+                }
                 selected={selectedId === item.id}
                 onSelect={() => setSelectedId(item.id)}
               />
             ))}
             {!visible.length && (
               <EmptyState
-                title="Space for inspiration"
+                title={
+                  approvalFilter !== 'all' && approvalReady
+                    ? 'No items match this status'
+                    : 'Space for inspiration'
+                }
                 detail={
-                  editable
-                    ? 'Add an image, link, or note to begin.'
-                    : 'Ideas will appear here when they are added.'
+                  approvalFilter !== 'all' && approvalReady
+                    ? 'Choose another approval status to see more items.'
+                    : editable
+                      ? 'Add an image, link, or note to begin.'
+                      : 'Ideas will appear here when they are added.'
                 }
               />
             )}
@@ -553,6 +632,7 @@ export function Editor({ boardId }: { boardId: string }) {
             key={selected.id}
             item={selected}
             editable={!!editable}
+            approval={approvalReady ? matchingApproval(selected, approvals.data) : undefined}
             sections={detail.data.sections}
             close={() => setSelectedId(null)}
             refresh={refresh}
@@ -731,8 +811,10 @@ function Inspector({
   close,
   refresh,
   move,
+  approval,
 }: {
   item: ItemResponse;
+  approval?: PlannerApproval;
   sections: { id: string; name: string }[];
   editable: boolean;
   close: () => void;
@@ -845,6 +927,7 @@ function Inspector({
           </PrimaryButton>
         )}
       </form>
+      {approval && <PlannerFeedback approval={approval} />}
       {editable && (
         <SecondaryButton
           className="mt-4 w-full"

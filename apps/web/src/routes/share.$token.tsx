@@ -3,6 +3,7 @@ import { useQueryClient } from '@tanstack/react-query';
 import { createFileRoute } from '@tanstack/react-router';
 import { Panel, SecondaryButton, Skeleton } from '@moodboard/ui';
 import { api } from '../lib/api';
+import { clientContext, changeClientContext } from '../lib/client-context';
 import { Brand } from '../components/Brand';
 
 export const Route = createFileRoute('/share/$token')({
@@ -22,17 +23,19 @@ function ShareEntry() {
   const [error, setError] = useState('');
   useEffect(() => {
     let active = true;
+    changeClientContext(null);
+    const context = clientContext();
+    const controller = new AbortController();
+    void qc.cancelQueries({ queryKey: ['client'] });
+    qc.removeQueries({ queryKey: ['client'] });
     api
-      .exchange(token)
+      .exchange(token, controller.signal)
       .then((result) => {
-        if (!active) {
+        if (!active || context !== clientContext()) {
           return;
         }
         qc.removeQueries({ queryKey: ['client'] });
-        localStorage.setItem(
-          'moodboard-client-context',
-          JSON.stringify({ boardId: result.board.id, nonce: crypto.randomUUID() }),
-        );
+        changeClientContext(result.board.id);
         window.location.replace(`/client/boards/${result.board.id}`);
       })
       .catch(() => {
@@ -44,6 +47,7 @@ function ShareEntry() {
       });
     return () => {
       active = false;
+      controller.abort();
     };
   }, [token, qc]);
   return (
