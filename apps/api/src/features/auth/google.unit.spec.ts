@@ -1,6 +1,6 @@
 import { ConfigService } from '@nestjs/config';
 import { OAuth2Client } from 'google-auth-library';
-import { DataSource } from 'typeorm';
+import { GoogleAttemptsRepository } from './google-attempts.repository';
 import { validateEnvironment } from '../../config';
 import { GoogleService } from './google.service';
 
@@ -11,11 +11,10 @@ const configuration = validateEnvironment({
   GOOGLE_CALLBACK_URL: 'http://127.0.0.1:3001/auth/google/callback',
 });
 describe('Google identity adapter', () => {
-  const query = jest.fn();
-  const service = new GoogleService(
-    { query } as unknown as DataSource,
-    new ConfigService(configuration),
-  );
+  const create = jest.fn();
+  const consume = jest.fn();
+  const attempts = { create, consume } as unknown as GoogleAttemptsRepository;
+  const service = new GoogleService(attempts, new ConfigService(configuration));
   const claims = {
     sub: 'google-user',
     email: 'Ada@Example.com',
@@ -24,7 +23,8 @@ describe('Google identity adapter', () => {
     name: ' Ada ',
   };
   beforeEach(() => {
-    query.mockReset();
+    create.mockReset();
+    consume.mockReset();
   });
   afterEach(() => {
     jest.restoreAllMocks();
@@ -36,9 +36,10 @@ describe('Google identity adapter', () => {
     expect(url.searchParams.get('code_challenge_method')).toBe('S256');
     expect(url.searchParams.get('state')).toBe(result.state);
     expect(url.searchParams.get('nonce')).toBeTruthy();
-    expect(query).toHaveBeenCalledWith(
-      expect.stringContaining('insert into google_auth_attempts'),
-      [expect.stringMatching(/^[a-f0-9]{64}$/), expect.any(String), expect.any(String)],
+    expect(create).toHaveBeenCalledWith(
+      expect.stringMatching(/^[a-f0-9]{64}$/),
+      expect.any(String),
+      expect.any(String),
     );
   });
   it('uses the official verifier with the configured audience', async () => {
@@ -48,7 +49,7 @@ describe('Google identity adapter', () => {
     const verify = jest
       .spyOn(OAuth2Client.prototype, 'verifyIdToken')
       .mockResolvedValue({ getPayload: () => claims } as never);
-    expect(await service.exchange('code', { nonce: 'nonce', pkce_verifier: 'verifier' })).toEqual({
+    expect(await service.exchange('code', { nonce: 'nonce', pkceVerifier: 'verifier' })).toEqual({
       subject: 'google-user',
       email: 'ada@example.com',
       displayName: 'Ada',
@@ -62,10 +63,7 @@ describe('Google identity adapter', () => {
     async (endpoint) => {
       // Capture the client without replacing its request or retry machinery.
       const generateAuthUrl = jest.spyOn(OAuth2Client.prototype, 'generateAuthUrl');
-      const adapter = new GoogleService(
-        { query } as unknown as DataSource,
-        new ConfigService(configuration),
-      );
+      const adapter = new GoogleService(attempts, new ConfigService(configuration));
       await adapter.start();
       const client = generateAuthUrl.mock.contexts[0] as OAuth2Client;
       const transport = client.transporter;
@@ -73,7 +71,7 @@ describe('Google identity adapter', () => {
       transport.defaults.fetchImplementation = provider;
       if (endpoint === 'token') {
         await expect(
-          adapter.exchange('code', { nonce: 'nonce', pkce_verifier: 'verifier' }),
+          adapter.exchange('code', { nonce: 'nonce', pkceVerifier: 'verifier' }),
         ).rejects.toThrow('Google sign-in failed');
       } else {
         await expect(client.getFederatedSignonCertsAsync()).rejects.toThrow();
@@ -94,7 +92,7 @@ describe('Google identity adapter', () => {
       .spyOn(OAuth2Client.prototype, 'verifyIdToken')
       .mockResolvedValue({ getPayload: () => payload } as never);
     await expect(
-      service.exchange('code', { nonce: 'nonce', pkce_verifier: 'verifier' }),
+      service.exchange('code', { nonce: 'nonce', pkceVerifier: 'verifier' }),
     ).rejects.toThrow('Google sign-in failed');
   });
   it.each(['signature', 'issuer', 'audience', 'expiry'])(
@@ -107,7 +105,7 @@ describe('Google identity adapter', () => {
         throw new Error(`private token ${reason}`);
       });
       await expect(
-        service.exchange('code', { nonce: 'nonce', pkce_verifier: 'verifier' }),
+        service.exchange('code', { nonce: 'nonce', pkceVerifier: 'verifier' }),
       ).rejects.toThrow('Google sign-in failed');
     },
   );
@@ -117,20 +115,20 @@ describe('Google identity adapter', () => {
       .mockImplementationOnce(async () => {
         throw new Error('private secret');
       });
-    await expect(service.exchange('code', { nonce: 'nonce', pkce_verifier: 'v' })).rejects.toThrow(
+    await expect(service.exchange('code', { nonce: 'nonce', pkceVerifier: 'v' })).rejects.toThrow(
       'Google sign-in failed',
     );
     exchange.mockResolvedValue({ tokens: { access_token: 'discard' } } as never);
-    await expect(service.exchange('code', { nonce: 'nonce', pkce_verifier: 'v' })).rejects.toThrow(
+    await expect(service.exchange('code', { nonce: 'nonce', pkceVerifier: 'v' })).rejects.toThrow(
       'Google sign-in failed',
     );
   });
   it('rejects state mismatch before consuming database state', async () => {
     await expect(service.consume('one', 'two')).rejects.toThrow('Invalid Google sign-in state');
-    expect(query).not.toHaveBeenCalled();
+    expect(consume).not.toHaveBeenCalled();
   });
   it('rejects already consumed attempts', async () => {
-    query.mockResolvedValue([[], 0]);
+    consume.mockResolvedValue(undefined);
     await expect(service.consume('same', 'same')).rejects.toThrow('Invalid Google sign-in state');
   });
 });

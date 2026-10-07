@@ -87,7 +87,7 @@ describe('Leased outbox deliveries and recovery', () => {
     await queues.add(first.target, payload!);
     await source.query("update board_event_deliveries set lease_until=now()-interval '1 second'");
     const second = (await dispatcher.claim())[0]!;
-    expect(second.lease_token).not.toBe(first.lease_token);
+    expect(second.leaseToken).not.toBe(first.leaseToken);
     await dispatcher.acknowledge(first, true);
     expect(await source.query('select done_at from board_event_deliveries')).toEqual([
       { done_at: null },

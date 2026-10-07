@@ -27,6 +27,7 @@ A shared mood board that turns inspiration into an agreed plan. Planners and des
 | [docs/16-backend-client-access.md](docs/16-backend-client-access.md) | Clients, board-specific contact links, isolated client sessions, and revocation |
 | [docs/17-web-planner-client-ui.md](docs/17-web-planner-client-ui.md) | Planner and client UI, local web setup, and browser flow diagrams |
 | [docs/18-backend-approvals.md](docs/18-backend-approvals.md) | Client decisions, swap requests, and approval state rules |
+| [docs/19-backend-database-mapping.md](docs/19-backend-database-mapping.md) | Shared entities, query builders, persistence boundaries, and diagrams |
 
 ## Local development
 

@@ -8,7 +8,8 @@ import {
 import { withTransaction } from '@moodboard/database';
 import { DataSource } from 'typeorm';
 import { AccessService } from '../access/access.service';
-import { AccessRepository, boardResponse } from '../access/access.repository';
+import { AccessRepository } from '../access/access.repository';
+import { boardResponse } from '../access/access.mapper';
 import { BoardEventWriter } from '../../platform/events/board-event.writer';
 import { SectionsRepository } from '../sections/sections.repository';
 import { BoardsRepository } from './boards.repository';
@@ -65,19 +66,19 @@ export class BoardsService {
       async (manager, access) => {
         const patch = { ...input };
         if (patch.clientId !== undefined) {
-          if (access.board.client_id && patch.clientId !== access.board.client_id) {
+          if (access.board.clientId && patch.clientId !== access.board.clientId) {
             throw new ConflictException('Board client cannot be changed');
           }
-          if (patch.clientId === access.board.client_id) {
+          if (patch.clientId === access.board.clientId) {
             delete patch.clientId;
           } else if (patch.clientId) {
             const client = await lockBusinessClient(
               manager,
               userId,
               patch.clientId,
-              access.board.workspace_id,
+              access.board.workspaceId,
             );
-            if (client.workspaceId !== access.board.workspace_id) {
+            if (client.workspaceId !== access.board.workspaceId) {
               throw new NotFoundException('Client not found');
             }
           }

@@ -6,25 +6,38 @@ import {
   ConflictException,
 } from '@nestjs/common';
 import { EntityManager } from 'typeorm';
-import { ClientResponse, ContactResponse, CreateContactRequest } from '@moodboard/contracts';
+import { ClientResponse, CreateContactRequest } from '@moodboard/contracts';
+import {
+  BoardEntity,
+  BoardParticipantEntity,
+  ClientEntity,
+  ClientContactEntity,
+  ContactSessionEntity,
+  WorkspaceEntity,
+  WorkspaceMemberEntity,
+  entityFromRow,
+} from '@moodboard/database';
 import { lockContactParents } from '../access/contact-access';
-
-const clientColumns = `id, workspace_id as "workspaceId", name,
-  to_char(created_at at time zone 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"') as "createdAt",
-  case when archived_at is null then null else to_char(archived_at at time zone 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"') end as "archivedAt"`;
-const contactColumns = 'id, client_id as "clientId", name, email';
+import { clientResponse, contactResponse } from './clients.mapper';
 
 export async function assertBusinessMember(
   manager: EntityManager,
   userId: string,
   workspaceId: string,
 ): Promise<void> {
-  const [row] = await manager.query(
-    `select w.type, m.role from workspaces w
-    join workspace_members m on m.workspace_id=w.id and m.user_id=$2
-    where w.id=$1 for key share of m`,
-    [workspaceId, userId],
-  );
+  const row = await manager
+    .createQueryBuilder(WorkspaceEntity, 'workspace')
+    .select('workspace.type', 'type')
+    .addSelect('member.role', 'role')
+    .innerJoin(
+      WorkspaceMemberEntity,
+      'member',
+      'member.workspaceId = workspace.id AND member.userId = :userId',
+      { userId },
+    )
+    .where('workspace.id = :workspaceId', { workspaceId })
+    .setLock('for_key_share', undefined, ['member'])
+    .getRawOne<Pick<WorkspaceEntity, 'type'> & Pick<WorkspaceMemberEntity, 'role'>>();
   if (!row) {
     throw new NotFoundException('Workspace not found');
   }
@@ -39,10 +52,11 @@ export async function lockBusinessClient(
   workspaceId?: string,
   active = true,
 ): Promise<ClientResponse> {
-  const [client] = await manager.query<ClientResponse[]>(
-    `select ${clientColumns} from clients where id=$1 for update`,
-    [clientId],
-  );
+  const client = await manager
+    .createQueryBuilder(ClientEntity, 'client')
+    .where('client.id = :clientId', { clientId })
+    .setLock('pessimistic_write')
+    .getOne();
   if (!client || (workspaceId && client.workspaceId !== workspaceId)) {
     throw new NotFoundException('Client not found');
   }
@@ -50,38 +64,51 @@ export async function lockBusinessClient(
   if (active && client.archivedAt) {
     throw new ConflictException('Client is archived');
   }
-  return client;
+  return clientResponse(client);
 }
 @Injectable()
 export class ClientsRepository {
   async list(manager: EntityManager, userId: string, workspaceId: string, archived: boolean) {
     await assertBusinessMember(manager, userId, workspaceId);
-    return manager.query<ClientResponse[]>(
-      `select ${clientColumns} from clients where workspace_id=$1
-      ${archived ? '' : 'and archived_at is null'} order by created_at, id`,
-      [workspaceId],
+    const query = manager
+      .createQueryBuilder(ClientEntity, 'client')
+      .where('client.workspaceId = :workspaceId', { workspaceId });
+    if (!archived) {
+      query.andWhere('client.archivedAt IS NULL');
+    }
+    return (await query.orderBy('client.createdAt').addOrderBy('client.id').getMany()).map(
+      clientResponse,
     );
   }
   async create(manager: EntityManager, userId: string, workspaceId: string, name: string) {
     await assertBusinessMember(manager, userId, workspaceId);
-    const [client] = await manager.query<ClientResponse[]>(
-      `insert into clients(id,workspace_id,name) values($1,$2,$3) returning ${clientColumns}`,
-      [randomUUID(), workspaceId, name],
-    );
-    return client;
+    const result = await manager
+      .createQueryBuilder()
+      .insert()
+      .into(ClientEntity)
+      .values({ id: randomUUID(), workspaceId, name })
+      .returning('*')
+      .execute();
+    return clientResponse(entityFromRow(manager, ClientEntity, result.raw[0]));
   }
   async archive(manager: EntityManager, userId: string, clientId: string) {
     await lockBusinessClient(manager, userId, clientId, undefined, false);
-    await manager.query('update clients set archived_at=coalesce(archived_at,now()) where id=$1', [
-      clientId,
-    ]);
+    await manager
+      .createQueryBuilder()
+      .update(ClientEntity)
+      .set({ archivedAt: () => 'coalesce(archived_at, now())' })
+      .where('id = :clientId', { clientId })
+      .execute();
   }
   async contacts(manager: EntityManager, userId: string, clientId: string) {
     await lockBusinessClient(manager, userId, clientId, undefined, false);
-    return manager.query<ContactResponse[]>(
-      `select ${contactColumns} from client_contacts where client_id=$1 and removed_at is null order by id`,
-      [clientId],
-    );
+    return (
+      await manager
+        .createQueryBuilder(ClientContactEntity, 'contact')
+        .where('contact.clientId = :clientId AND contact.removedAt IS NULL', { clientId })
+        .orderBy('contact.id')
+        .getMany()
+    ).map(contactResponse);
   }
   async createContact(
     manager: EntityManager,
@@ -90,21 +117,67 @@ export class ClientsRepository {
     input: CreateContactRequest,
   ) {
     await lockBusinessClient(manager, userId, clientId);
-    const [contact] = await manager.query<ContactResponse[]>(
-      `insert into client_contacts(id,client_id,name,email) values($1,$2,$3,$4) returning ${contactColumns}`,
-      [randomUUID(), clientId, input.name, input.email ?? null],
-    );
-    return contact;
+    const result = await manager
+      .createQueryBuilder()
+      .insert()
+      .into(ClientContactEntity)
+      .values({ id: randomUUID(), clientId, name: input.name, email: input.email ?? null })
+      .returning('*')
+      .execute();
+    return contactResponse(entityFromRow(manager, ClientContactEntity, result.raw[0]));
   }
   async contact(manager: EntityManager, userId: string, contactId: string) {
     await lockContactParents(manager, contactId);
-    const [contact] = await manager.query<
-      { id: string; client_id: string; removed_at: Date | null }[]
-    >('select id,client_id,removed_at from client_contacts where id=$1', [contactId]);
+    const contact = await manager
+      .createQueryBuilder(ClientContactEntity, 'contact')
+      .where('contact.id = :contactId', { contactId })
+      .getOne();
     if (!contact) {
       throw new NotFoundException('Contact not found');
     }
-    await lockBusinessClient(manager, userId, contact.client_id, undefined, false);
+    await lockBusinessClient(manager, userId, contact.clientId, undefined, false);
     return contact;
+  }
+  lockAssignments(manager: EntityManager, contactId: string) {
+    return manager
+      .createQueryBuilder(BoardParticipantEntity, 'participant')
+      .select('participant.id', 'id')
+      .addSelect('participant.boardId', 'boardId')
+      .innerJoin(BoardEntity, 'board', 'board.id = participant.boardId')
+      .where('participant.contactId = :contactId', { contactId })
+      .orderBy('board.id')
+      .setLock('pessimistic_write', undefined, ['board'])
+      .getRawMany<Pick<BoardParticipantEntity, 'id' | 'boardId'>>();
+  }
+  async anonymizeContact(manager: EntityManager, contactId: string) {
+    await manager
+      .createQueryBuilder()
+      .update(ClientContactEntity)
+      .set({
+        name: '',
+        email: null,
+        removedAt: () => 'now()',
+        linkVersion: () => 'link_version + 1',
+      })
+      .where('id = :contactId', { contactId })
+      .execute();
+    await manager
+      .createQueryBuilder()
+      .delete()
+      .from(ContactSessionEntity)
+      .where('contact_id = :contactId', { contactId })
+      .execute();
+  }
+  async revokeAssignment(manager: EntityManager, participantId: string) {
+    await manager
+      .createQueryBuilder()
+      .update(BoardParticipantEntity)
+      .set({
+        revokedAt: () => 'coalesce(revoked_at, now())',
+        revokedOnLeave: false,
+        linkVersion: () => 'link_version + 1',
+      })
+      .where('id = :participantId', { participantId })
+      .execute();
   }
 }

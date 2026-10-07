@@ -4,6 +4,7 @@ import sharp from 'sharp';
 import { ConflictException, NotFoundException } from '@nestjs/common';
 import { itemResponseSchema } from '@moodboard/contracts';
 import { R2Storage } from '@moodboard/storage';
+import { AssetsRepository } from '../apps/api/src/features/assets/assets.repository';
 import { AssetsService } from '../apps/api/src/features/assets/assets.service';
 import { MediaStorage } from '../apps/api/src/platform/storage/storage.module';
 import { ItemsService } from '../apps/api/src/features/items/items.service';
@@ -35,7 +36,7 @@ describe('Media storage and transactional results', () => {
       require: () => storage,
       onModuleDestroy: () => undefined,
     } as MediaStorage;
-    assets = new AssetsService(source, services.access, media);
+    assets = new AssetsService(new AssetsRepository(source), services.access, media);
     items = new ItemsService(
       services.access,
       new ItemsRepository(source),
@@ -410,11 +411,20 @@ describe('Media storage and transactional results', () => {
     await processors.preview({ entityId: id, generation: 'initial' });
     expect(fetcher.fetch).toHaveBeenCalledTimes(2);
   });
-  async function waitForLock(queryPrefix: string) {
+  async function waitForLock(
+    runner: ReturnType<typeof source.createQueryRunner>,
+    transitive = false,
+  ) {
+    const [{ pid }] = await runner.query('select pg_backend_pid() as pid');
     for (let attempt = 0; attempt < 100; attempt++) {
       const [row] = await source.query(
-        "select exists (select 1 from pg_stat_activity where wait_event_type='Lock' and query like $1) as blocked",
-        [`${queryPrefix}%`],
+        `select exists (
+          select 1 from pg_stat_activity a where a.datname=current_database() and a.wait_event_type='Lock'
+          and case when $2 then exists (
+            select 1 from pg_stat_activity b where $1=any(pg_blocking_pids(b.pid)) and b.pid=any(pg_blocking_pids(a.pid))
+          ) else $1=any(pg_blocking_pids(a.pid)) end
+        ) as blocked`,
+        [pid, transitive],
       );
       if (row.blocked) {
         return;
@@ -441,7 +451,7 @@ describe('Media storage and transactional results', () => {
     await runner.query('select id from boards where id=$1 for update', [owner.board.id]);
     const completion = processors.preview({ entityId: item.preview.id, generation: 'initial' });
     try {
-      await waitForLock('select b.id from boards b');
+      await waitForLock(runner);
       await runner.query('update items set deleted_at=now() where id=$1', [item.id]);
       await runner.commitTransaction();
       await completion;
@@ -480,14 +490,14 @@ describe('Media storage and transactional results', () => {
     const completion = processors.preview({ entityId: item.preview.id, generation: 'initial' });
     let attachment: ReturnType<ItemsService['create']> | undefined;
     try {
-      await waitForLock('select b.id from boards b');
+      await waitForLock(runner);
       attachment = items.create(second.userId, second.board.id, {
         id: randomUUID(),
         kind: 'link',
         url,
         zOrder: 'a0',
       });
-      await waitForLock('select pg_advisory_xact_lock');
+      await waitForLock(runner, true);
       await runner.commitTransaction();
       await completion;
       const attached = await attachment;

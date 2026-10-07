@@ -5,35 +5,19 @@ import {
   NotFoundException,
   BadRequestException,
 } from '@nestjs/common';
-import {
-  AssignContactRequest,
-  ContactParticipantResponse,
-  UpdateContactParticipantRequest,
-} from '@moodboard/contracts';
+import { AssignContactRequest, UpdateContactParticipantRequest } from '@moodboard/contracts';
 import { EntityManager, DataSource } from 'typeorm';
+import {
+  BoardEntity,
+  BoardParticipantEntity,
+  ClientContactEntity,
+  ClientEntity,
+  ContactSessionEntity,
+  entityFromRow,
+} from '@moodboard/database';
 import { lockContactParents } from '../access/contact-access';
+import { ContactAssignment, participantResponse } from './participants.mapper';
 
-export interface ContactAssignment {
-  id: string;
-  board_id: string;
-  contact_id: string;
-  role: 'viewer' | 'approver';
-  expires_at: Date | null;
-  revoked_at: Date | null;
-  joined_at: Date;
-  link_version: number;
-}
-export function participantResponse(p: ContactAssignment): ContactParticipantResponse {
-  return {
-    id: p.id,
-    boardId: p.board_id,
-    contactId: p.contact_id,
-    role: p.role,
-    expiresAt: p.expires_at?.toISOString() ?? null,
-    revokedAt: p.revoked_at?.toISOString() ?? null,
-    joinedAt: p.joined_at.toISOString(),
-  };
-}
 export function validateExpiry(value: string | null | undefined) {
   if (value && new Date(value).getTime() <= Date.now()) {
     throw new BadRequestException('Expiry must be in the future');
@@ -43,22 +27,28 @@ export function validateExpiry(value: string | null | undefined) {
 export class ParticipantsRepository {
   constructor(private readonly source: DataSource) {}
   async identity(boardId: string, participantId: string) {
-    const [row] = await this.source.query<{ contact_id: string }[]>(
-      'select contact_id from board_participants where board_id=$1 and id=$2 and contact_id is not null',
-      [boardId, participantId],
-    );
+    const row = await this.source.manager
+      .createQueryBuilder(BoardParticipantEntity, 'participant')
+      .select(['participant.id', 'participant.contactId'])
+      .where(
+        'participant.boardId = :boardId AND participant.id = :participantId AND participant.contactId IS NOT NULL',
+        { boardId, participantId },
+      )
+      .getOne();
     if (!row) {
       throw new NotFoundException('Participant not found');
     }
-    return row.contact_id;
+    return row.contactId!;
   }
   async lockContact(manager: EntityManager, contactId: string) {
     await lockContactParents(manager, contactId);
-    const [contact] = await manager.query<{ client_id: string; archived_at: Date | null }[]>(
-      `select ct.client_id,c.archived_at
-      from client_contacts ct join clients c on c.id=ct.client_id where ct.id=$1 and ct.removed_at is null`,
-      [contactId],
-    );
+    const contact = await manager
+      .createQueryBuilder(ClientContactEntity, 'contact')
+      .select('contact.clientId', 'clientId')
+      .addSelect('client.archivedAt', 'archivedAt')
+      .innerJoin(ClientEntity, 'client', 'client.id = contact.clientId')
+      .where('contact.id = :contactId AND contact.removedAt IS NULL', { contactId })
+      .getRawOne<Pick<ClientContactEntity, 'clientId'> & Pick<ClientEntity, 'archivedAt'>>();
     if (!contact) {
       throw new NotFoundException('Contact not found');
     }
@@ -69,21 +59,26 @@ export class ParticipantsRepository {
     boardId: string,
     participantId: string,
   ): Promise<ContactAssignment> {
-    const [row] = await manager.query<ContactAssignment[]>(
-      'select * from board_participants where board_id=$1 and id=$2 and contact_id is not null',
-      [boardId, participantId],
-    );
+    const row = await manager
+      .createQueryBuilder(BoardParticipantEntity, 'participant')
+      .where(
+        'participant.boardId = :boardId AND participant.id = :participantId AND participant.contactId IS NOT NULL',
+        { boardId, participantId },
+      )
+      .getOne();
     if (!row) {
       throw new NotFoundException('Participant not found');
     }
-    return row;
+    return row as ContactAssignment;
   }
   async list(manager: EntityManager, boardId: string) {
-    const rows = await manager.query<ContactAssignment[]>(
-      'select * from board_participants where board_id=$1 and contact_id is not null order by joined_at,id',
-      [boardId],
-    );
-    return rows.map(participantResponse);
+    const rows = await manager
+      .createQueryBuilder(BoardParticipantEntity, 'participant')
+      .where('participant.boardId = :boardId AND participant.contactId IS NOT NULL', { boardId })
+      .orderBy('participant.joinedAt')
+      .addOrderBy('participant.id')
+      .getMany();
+    return rows.map((row) => participantResponse(row as ContactAssignment));
   }
   async assign(
     manager: EntityManager,
@@ -93,42 +88,53 @@ export class ParticipantsRepository {
     input: AssignContactRequest,
   ) {
     const contact = await this.lockContact(manager, input.contactId);
-    if (contact.client_id !== clientId) {
+    if (contact.clientId !== clientId) {
       throw new NotFoundException('Contact not found');
     }
-    if (contact.archived_at) {
+    if (contact.archivedAt) {
       throw new ConflictException('Client is archived');
     }
     validateExpiry(input.expiresAt);
-    const [old] = await manager.query<ContactAssignment[]>(
-      'select * from board_participants where board_id=$1 and contact_id=$2',
-      [boardId, input.contactId],
-    );
+    const old = (await manager
+      .createQueryBuilder(BoardParticipantEntity, 'participant')
+      .where('participant.boardId = :boardId AND participant.contactId = :contactId', {
+        boardId,
+        contactId: input.contactId,
+      })
+      .getOne()) as ContactAssignment | null;
     if (!old) {
-      const [row] = await manager.query<ContactAssignment[]>(
-        `insert into board_participants(id,board_id,contact_id,role,invited_by,expires_at)
-        values($1,$2,$3,$4,$5,$6) returning *`,
-        [randomUUID(), boardId, input.contactId, input.role, userId, input.expiresAt ?? null],
-      );
+      const result = await manager
+        .createQueryBuilder()
+        .insert()
+        .into(BoardParticipantEntity)
+        .values({
+          id: randomUUID(),
+          boardId,
+          contactId: input.contactId,
+          role: input.role,
+          invitedBy: userId,
+          expiresAt: input.expiresAt ? new Date(input.expiresAt) : null,
+        })
+        .returning('*')
+        .execute();
       return {
-        row: row!,
+        row: entityFromRow(manager, BoardParticipantEntity, result.raw[0]) as ContactAssignment,
         created: true,
         restored: false,
         changedFields: [] as ('role' | 'expiresAt' | 'linkVersion')[],
       };
     }
     const restored =
-      old.revoked_at !== null ||
-      (old.expires_at !== null && old.expires_at.getTime() <= Date.now());
+      old.revokedAt !== null || (old.expiresAt !== null && old.expiresAt.getTime() <= Date.now());
     const expires =
       input.expiresAt === undefined && !restored
-        ? (old.expires_at?.toISOString() ?? null)
+        ? (old.expiresAt?.toISOString() ?? null)
         : (input.expiresAt ?? null);
     const changedFields: ('role' | 'expiresAt' | 'linkVersion')[] = [];
     if (old.role !== input.role) {
       changedFields.push('role');
     }
-    if ((old.expires_at?.toISOString() ?? null) !== expires) {
+    if ((old.expiresAt?.toISOString() ?? null) !== expires) {
       changedFields.push('expiresAt');
     }
     if (restored) {
@@ -137,15 +143,29 @@ export class ParticipantsRepository {
     if (!changedFields.length) {
       return { row: old, created: false, restored, changedFields };
     }
-    const [row] = await manager.query<ContactAssignment[]>(
-      `with updated as (update board_participants set role=$3,expires_at=$4,
-      revoked_at=null,revoked_on_leave=false,link_version=link_version+$5 where board_id=$1 and id=$2 returning *) select * from updated`,
-      [boardId, old.id, input.role, expires, restored ? 1 : 0],
-    );
+    const result = await manager
+      .createQueryBuilder()
+      .update(BoardParticipantEntity)
+      .set({
+        role: input.role,
+        expiresAt: expires ? new Date(expires) : null,
+        revokedAt: null,
+        revokedOnLeave: false,
+        linkVersion: () => 'link_version + :generationChange',
+      })
+      .where('board_id = :boardId AND id = :id', { boardId, id: old.id })
+      .setParameter('generationChange', restored ? 1 : 0)
+      .returning('*')
+      .execute();
     if (restored) {
-      await manager.query('delete from contact_sessions where participant_id=$1', [old.id]);
+      await this.deleteSessions(manager, old.id);
     }
-    return { row: row!, created: false, restored, changedFields };
+    return {
+      row: entityFromRow(manager, BoardParticipantEntity, result.raw[0]) as ContactAssignment,
+      created: false,
+      restored,
+      changedFields,
+    };
   }
   async update(
     manager: EntityManager,
@@ -153,7 +173,7 @@ export class ParticipantsRepository {
     input: UpdateContactParticipantRequest,
   ) {
     validateExpiry(input.expiresAt);
-    if (row.revoked_at || (row.expires_at && row.expires_at.getTime() <= Date.now())) {
+    if (row.revokedAt || (row.expiresAt && row.expiresAt.getTime() <= Date.now())) {
       throw new ConflictException('Re-add participant to restore access');
     }
     const fields: ('role' | 'expiresAt')[] = [];
@@ -162,55 +182,85 @@ export class ParticipantsRepository {
     }
     if (
       input.expiresAt !== undefined &&
-      input.expiresAt !== (row.expires_at?.toISOString() ?? null)
+      input.expiresAt !== (row.expiresAt?.toISOString() ?? null)
     ) {
       fields.push('expiresAt');
     }
     if (!fields.length) {
       return { row, fields };
     }
-    const [updated] = await manager.query<ContactAssignment[]>(
-      `with updated as (update board_participants set role=$2,expires_at=$3 where id=$1 returning *) select * from updated`,
-      [
-        row.id,
-        input.role ?? row.role,
-        input.expiresAt === undefined ? row.expires_at : input.expiresAt,
-      ],
-    );
-    return { row: updated!, fields };
+    const result = await manager
+      .createQueryBuilder()
+      .update(BoardParticipantEntity)
+      .set({
+        role: input.role ?? row.role,
+        expiresAt:
+          input.expiresAt === undefined
+            ? row.expiresAt
+            : input.expiresAt
+              ? new Date(input.expiresAt)
+              : null,
+      })
+      .where('id = :id', { id: row.id })
+      .returning('*')
+      .execute();
+    return {
+      row: entityFromRow(manager, BoardParticipantEntity, result.raw[0]) as ContactAssignment,
+      fields,
+    };
   }
   async revoke(manager: EntityManager, row: ContactAssignment): Promise<boolean> {
-    if (row.revoked_at) {
+    if (row.revokedAt) {
       return false;
     }
-    await manager.query(
-      'update board_participants set revoked_at=now(),revoked_on_leave=false,link_version=link_version+1 where id=$1',
-      [row.id],
-    );
-    await manager.query('delete from contact_sessions where participant_id=$1', [row.id]);
+    await manager
+      .createQueryBuilder()
+      .update(BoardParticipantEntity)
+      .set({
+        revokedAt: () => 'now()',
+        revokedOnLeave: false,
+        linkVersion: () => 'link_version + 1',
+      })
+      .where('id = :id', { id: row.id })
+      .execute();
+    await this.deleteSessions(manager, row.id);
     return true;
   }
   async rotate(manager: EntityManager, row: ContactAssignment): Promise<ContactAssignment> {
-    const [updated] = await manager.query<ContactAssignment[]>(
-      'with updated as (update board_participants set link_version=link_version+1 where id=$1 returning *) select * from updated',
-      [row.id],
-    );
-    await manager.query('delete from contact_sessions where participant_id=$1', [row.id]);
-    return updated!;
+    const result = await manager
+      .createQueryBuilder()
+      .update(BoardParticipantEntity)
+      .set({ linkVersion: () => 'link_version + 1' })
+      .where('id = :id', { id: row.id })
+      .returning('*')
+      .execute();
+    await this.deleteSessions(manager, row.id);
+    return entityFromRow(manager, BoardParticipantEntity, result.raw[0]) as ContactAssignment;
   }
   async assertActive(manager: EntityManager, row: ContactAssignment) {
-    const [found] = await manager.query(
-      `select 1 from boards b join client_contacts c on c.client_id=b.client_id
-      where b.id=$1 and c.id=$2 and c.removed_at is null`,
-      [row.board_id, row.contact_id],
-    );
+    const found = await manager
+      .createQueryBuilder(BoardEntity, 'board')
+      .innerJoin(ClientContactEntity, 'contact', 'contact.clientId = board.clientId')
+      .where('board.id = :boardId AND contact.id = :contactId AND contact.removedAt IS NULL', {
+        boardId: row.boardId,
+        contactId: row.contactId,
+      })
+      .getExists();
     if (
       !found ||
-      row.revoked_at ||
+      row.revokedAt ||
       !['viewer', 'approver'].includes(row.role) ||
-      (row.expires_at && row.expires_at.getTime() <= Date.now())
+      (row.expiresAt && row.expiresAt.getTime() <= Date.now())
     ) {
       throw new NotFoundException('Participant not found');
     }
+  }
+  private async deleteSessions(manager: EntityManager, participantId: string) {
+    await manager
+      .createQueryBuilder()
+      .delete()
+      .from(ContactSessionEntity)
+      .where('participant_id = :participantId', { participantId })
+      .execute();
   }
 }

@@ -6,7 +6,7 @@ import {
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { CodeChallengeMethod, OAuth2Client } from 'google-auth-library';
-import { DataSource } from 'typeorm';
+import { GoogleAttemptsRepository, GoogleAttempt } from './google-attempts.repository';
 import { z } from 'zod';
 import { emailSchema } from '@moodboard/contracts';
 import { ApiConfig } from '../../config';
@@ -17,10 +17,6 @@ export interface GoogleIdentity {
   email: string;
   displayName: string;
   avatarUrl: string | null;
-}
-export interface GoogleAttempt {
-  nonce: string;
-  pkce_verifier: string;
 }
 const claimsSchema = z.object({
   sub: z.string().min(1).max(255),
@@ -34,7 +30,7 @@ const claimsSchema = z.object({
 export class GoogleService {
   private oauthClient: OAuth2Client | undefined;
   constructor(
-    private readonly source: DataSource,
+    private readonly attempts: GoogleAttemptsRepository,
     private readonly config: ConfigService<ApiConfig, true>,
   ) {}
   private client(): OAuth2Client {
@@ -57,16 +53,10 @@ export class GoogleService {
   }
   async start(): Promise<{ state: string; url: string }> {
     const client = this.client();
-    await this.source.query(`delete from google_auth_attempts where state_hash in
-      (select state_hash from google_auth_attempts where expires_at<=now() order by expires_at limit 50)`);
     const state = randomToken();
     const nonce = randomToken();
     const pkce = await client.generateCodeVerifierAsync();
-    await this.source.query(
-      `insert into google_auth_attempts (state_hash, nonce, pkce_verifier, expires_at)
-      values ($1, $2, $3, now()+interval '10 minutes')`,
-      [tokenHash(state), nonce, pkce.codeVerifier],
-    );
+    await this.attempts.create(tokenHash(state), nonce, pkce.codeVerifier);
     const url = client.generateAuthUrl({
       scope: ['openid', 'email', 'profile'],
       state,
@@ -81,13 +71,7 @@ export class GoogleService {
     if (!state || !cookie || state !== cookie) {
       throw new BadRequestException('Invalid Google sign-in state');
     }
-    // DELETE is atomic, so concurrent callbacks cannot reuse the same attempt.
-    const [rows] = await this.source.query<[GoogleAttempt[], number]>(
-      `delete from google_auth_attempts
-      where state_hash=$1 and expires_at>now() returning nonce, pkce_verifier`,
-      [tokenHash(state)],
-    );
-    const attempt = rows[0];
+    const attempt = await this.attempts.consume(tokenHash(state));
     if (!attempt) {
       throw new BadRequestException('Invalid Google sign-in state');
     }
@@ -96,7 +80,7 @@ export class GoogleService {
   async exchange(code: string, attempt: GoogleAttempt): Promise<GoogleIdentity> {
     const client = this.client();
     try {
-      const { tokens } = await client.getToken({ code, codeVerifier: attempt.pkce_verifier });
+      const { tokens } = await client.getToken({ code, codeVerifier: attempt.pkceVerifier });
       if (!tokens.id_token) {
         throw new Error('Missing identity');
       }

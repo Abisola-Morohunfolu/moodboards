@@ -40,13 +40,13 @@ apps/
       queues/             Queue names, payloads, and registration
 packages/
   contracts/              Shared HTTP, WebSocket, job, and event shapes
-  database/               Database client and shared transaction/event helpers
+  database/               Shared scalar entities, client, and transaction/event helpers
   storage/                Private Cloudflare R2 adapter
   kits/                   Data-only board kit definitions
   modules/                Module registry and implementations from Phase 2
   ui/                     Shared presentational React components
 db/
-  schema.sql              Reference model used by local bootstrap
+  schema.sql              Reference model; explicit API migrations create the schema
 docs/                     Product and engineering specifications
 ```
 
@@ -60,8 +60,10 @@ packages/ui -> packages/contracts
 ```
 
 Shared packages never import an app. `contracts` contains schemas and types, not
-business logic or database access. `database` contains primitives shared by the
+business logic or database access. `database` contains the scalar entity mappings and primitives shared by the
 API, dispatcher, and workers; feature-specific queries stay with their owner.
+Repositories build queries from a supplied transaction manager and response
+mappers remain in their owning features.
 
 The API core does not import a board module. The application composition root
 will assemble the module registry, and the dispatcher will invoke handlers
@@ -89,3 +91,14 @@ Work unit 5 adds clients, contact participants, board-specific link exchange, an
 isolated client read controllers. The shared access feature owns the typed
 contact authorization context and session repository; account management stays
 on the existing account principal.
+
+
+Work unit 8 registers shared entity mappings for the 18 active persistence tables.
+Entities live one per `*.entity.ts` file under domain folders: accounts,
+workspaces, clients, boards, media, outbox, and approvals. Folder indexes export
+their classes, and the root entity index assembles the shared registry.
+API feature repositories and worker dispatcher/media/maintenance repositories own
+queries. Services and job orchestration keep transaction and authorization rules;
+response mappers keep transport output separate from entities. Complex Postgres
+queries remain explicit SQL in repositories. See
+[database mapping work unit](19-backend-database-mapping.md).

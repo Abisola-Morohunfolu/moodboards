@@ -1,4 +1,9 @@
 import 'reflect-metadata';
+import { BoardEntity, BoardEventEntity, databaseEntities } from './entities';
+
+export * from './entities';
+export * from './mapping';
+export * from './patch';
 import { DataSource, EntityManager, MigrationInterface } from 'typeorm';
 import type { PostgresConnectionOptions } from 'typeorm/driver/postgres/PostgresConnectionOptions';
 
@@ -26,7 +31,7 @@ export function databaseOptions(config: DatabaseConfig): PostgresConnectionOptio
     migrationsTransactionMode: 'all',
     migrationsTableName: 'migrations',
     migrations: config.migrations ?? [],
-    entities: [],
+    entities: databaseEntities,
     logging: false,
   };
 }
@@ -46,7 +51,7 @@ export type { DataSource, EntityManager } from 'typeorm';
 
 // Callers validate event contracts and acquire resource locks before board locks.
 export async function resourceLock(manager: EntityManager, key: string): Promise<void> {
-  await manager.query('select pg_advisory_xact_lock(hashtextextended($1, 0))', [key]);
+  await manager.sql`SELECT pg_advisory_xact_lock(hashtextextended(${key}, 0))`;
 }
 export async function appendBoardEvent(
   manager: EntityManager,
@@ -54,16 +59,29 @@ export async function appendBoardEvent(
   participantId: string | null,
   event: { type: string; payload: unknown },
 ): Promise<string> {
-  const rows: { event_seq: string }[] = await manager.query(
-    'with advanced as (update boards set event_seq=event_seq+1 where id=$1 returning event_seq) select event_seq from advanced',
-    [boardId],
-  );
-  if (!rows[0]) {
+  const result = await manager
+    .createQueryBuilder()
+    .update(BoardEntity)
+    .set({ eventSeq: () => 'event_seq + 1' })
+    .where('id = :boardId', { boardId })
+    .returning(['eventSeq'])
+    .execute();
+  const row = result.raw[0] as { event_seq: string } | undefined;
+  if (!row) {
     throw new Error('Cannot append an event to a missing board');
   }
-  await manager.query(
-    'insert into board_events (board_id,board_seq,participant_id,type,payload) values ($1,$2,$3,$4,$5::jsonb)',
-    [boardId, rows[0].event_seq, participantId, event.type, JSON.stringify(event.payload)],
-  );
-  return rows[0].event_seq;
+  await manager
+    .createQueryBuilder()
+    .insert()
+    .into(BoardEventEntity)
+    .values({
+      boardId,
+      boardSeq: row.event_seq,
+      participantId,
+      type: event.type,
+      payload: () => ':payload::jsonb',
+    })
+    .setParameter('payload', JSON.stringify(event.payload))
+    .execute();
+  return row.event_seq;
 }

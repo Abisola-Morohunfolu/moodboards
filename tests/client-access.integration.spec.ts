@@ -87,11 +87,14 @@ describe('Contact access transactions and isolation', () => {
       principal,
     };
   }
-  async function waitForContactLock() {
+  async function waitForContactLock(runner: ReturnType<typeof source.createQueryRunner>) {
+    const [{ pid }] = await runner.query('select pg_backend_pid() as pid');
     for (let i = 0; i < 200; i++) {
-      const [row] =
-        await source.query(`select count(*)::int as n from pg_stat_activity where datname=current_database()
-        and wait_event_type='Lock' and query like 'select c.id from clients c join client_contacts%'`);
+      const [row] = await source.query(
+        `select count(*)::int as n from pg_stat_activity where datname=current_database()
+        and wait_event_type='Lock' and $1=any(pg_blocking_pids(pid))`,
+        [pid],
+      );
       if (row.n > 0) {
         return;
       }
@@ -259,7 +262,7 @@ describe('Contact access transactions and isolation', () => {
         () => 'allowed',
         (e: { status: number }) => e.status,
       );
-      await waitForContactLock();
+      await waitForContactLock(runner);
       await runner.query(
         'update board_participants set revoked_at=now(),link_version=link_version+1 where id=$1',
         [f.participant.id],
@@ -291,7 +294,7 @@ describe('Contact access transactions and isolation', () => {
           () => 200,
           (e: { status: number }) => e.status,
         );
-      await waitForContactLock();
+      await waitForContactLock(runner);
       await runner.query(
         "update client_contacts set removed_at=now(),name='',email=null where id=$1",
         [f.contact.id],
@@ -361,7 +364,7 @@ describe('Contact access transactions and isolation', () => {
         () => 200,
         (e: { status: number }) => e.status,
       );
-      await waitForContactLock();
+      await waitForContactLock(runner);
       await runner.query('select id from boards where id=$1 for update', [f.board.id]);
       await runner.query('update board_participants set link_version=link_version+1 where id=$1', [
         f.participant.id,

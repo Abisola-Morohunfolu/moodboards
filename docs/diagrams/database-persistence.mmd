@@ -1,0 +1,11 @@
+flowchart TD
+    API["API services"] --> AR["Feature repositories"]
+    WORK["Worker orchestration"] --> WR["Worker repositories"]
+    AR --> QB["Entity-backed query builders"]
+    WR --> QB
+    AR --> SQL["Focused parameterized SQL"]
+    WR --> SQL
+    ENT["Shared entity mappings"] -.-> QB
+    QB --> MAN["Owning process EntityManager"]
+    SQL --> MAN
+    MAN --> PG[("Postgres")]
