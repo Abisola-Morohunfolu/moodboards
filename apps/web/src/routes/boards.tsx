@@ -52,7 +52,7 @@ function BoardsContent({ me }: { me: Awaited<ReturnType<typeof account>> }) {
   const [workspaceId, setWorkspaceId] = useState('');
   const selected =
     me.workspaces.find((w) => w.id === workspaceId) ??
-    me.workspaces.find((w) => w.type === 'business') ??
+    me.workspaces.find((w) => w.type === 'personal') ??
     me.workspaces[0];
   const selectedId = selected?.id ?? '';
   const boards = q.boards(selectedId);

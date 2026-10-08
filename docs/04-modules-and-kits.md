@@ -1,5 +1,10 @@
 # Modules and kits
 
+This is a candidate architecture for future specialist capabilities, not the
+current feature roadmap. General board-making comes first; introduce reusable
+modules only when observed needs justify them. Blank boards do not require a
+kit picker or module setup. See [product direction](01-product.md).
+
 A **module** is one self-contained feature: approvals, budget, checklist, map. A **kit** is a starting bundle of modules plus labels and an export layout for one kind of plan. A board starts from a kit, then turns modules on or off freely.
 
 ## Core versus module

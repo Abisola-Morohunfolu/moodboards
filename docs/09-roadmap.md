@@ -1,56 +1,36 @@
 # Roadmap
 
-Implementation note: backend work units 1–5 and 7 and web work unit 6 are
-complete. Backend work unit 8 adds shared entity mappings and query builders
-across the API and worker; see [database cleanup](19-backend-database-mapping.md).
-Web work unit 9 completes [client approval controls](20-web-approvals.md).
-The events kit, budget, export, and billing follow.
+## Direction
 
-Estimates assume one full-stack developer working part time, about 15 hours a week.
+General board-making comes first. Preserve the existing client workflow as an
+optional capability. This replaces the earlier planner-first phases,
+paying-planner launch gates, specialist kit sequence, and speculative pricing.
+New features should follow evidence from using boards, without requiring a
+particular use case to materialize.
 
-## Phase 0: validate, 2 weeks
+## Completed foundation
 
-- Interview 15 planners about client approvals.
-- Show a clickable mockup to the 5 or more who say it hurts.
-- Pre-sell the first month to 3 of them.
+Accounts and personal/business workspaces, board core, media workers, client
+access, web canvas/mobile grid, versioned approvals, shared database mappings,
+and client approval controls are implemented (work units 1–9).
 
-Exit: 3 paying planners. Without them, change the idea.
+## Work unit 10: quick capture
 
-## Phase 1: planner MVP, 8 weeks
+See [requirements and diagrams](21-web-quick-capture.md).
 
-- Auth, business workspaces, clients, client contacts.
-- Boards with the `events` kit, canvas layout, sections.
-- Items: note, image upload, link with preview.
-- Client links with approve or swap. Approvals and budget are built in, not yet modules.
-- PDF export, business subscription with Stripe.
+1. Shared in-memory capture queue, text/URL interpretation, explicit text
+   composer, progress tray, safe retries, and personal workspace default.
+2. Image paste/drop, multiple-image selection, per-file validation, canvas
+   placement, navigation warnings, and desktop/mobile verification.
 
-Exit: 10 paying planners.
+Exit: collect several items without repeated dialogs; partial failures preserve
+successful saves; uncertain retries create no duplicates; processing states are
+separate from save confirmation. Existing client approvals remain functional.
 
-## Phase 2: collaboration and second kit, 6 weeks
+## Evaluate after use
 
-- Live sync, presence, and version checks on drop.
-- Full sharing and roles: `board_participants`, general access, invites, revocation.
-- The `interior` kit with grid layout. Pull approvals, budget, and vendors out into modules now that two kits use them.
-- Event outbox with `LISTEN/NOTIFY`.
-
-Exit: 35 paying workspaces, about $1,000 a month.
-
-## Phase 3: personal boards, 6 weeks
-
-- Personal workspaces, `blank` kit, Unsorted.
-- Quick save from the phone share sheet and a browser extension.
-- Partner invites, automatic reactions, approval offers.
-- Board Pass with one-time Checkout.
-
-## Phase 4: life planning, 8 weeks
-
-- Kits: `moving`, `house-hunting`, `date-night`.
-- Modules: checklist, compare, map, date poll.
-- Templates and copying items between boards.
-- Household plan.
-
-## Later
-
-- Affiliate links on product and vendor items.
-- Price and stock tracking across stores.
-- Vendor listings and leads.
+Record friction in collecting, arranging, revisiting, and sharing real boards.
+Select the next bounded improvement from those observations. Potential work:
+organization and recovery, general sharing, cross-board capture, external
+capture, export, and only then optional specialist capabilities or billing if
+there is evidence for them. These are candidates without dates or revenue gates.

@@ -1,0 +1,29 @@
+sequenceDiagram
+    actor User
+    participant Web as Board and capture queue
+    participant API as Existing API
+    participant Storage as Private R2
+    participant Worker as Media worker
+
+    User->>Web: Capture inputs
+    Web->>Web: Snapshot destination and assign item IDs
+    alt Image
+        Web->>API: Reserve upload
+        API-->>Web: Asset ID and signed URL
+        Web->>Storage: Upload image
+    end
+    Web->>API: Create item with stable UUID
+    alt Confirmed response
+        API-->>Web: Existing or newly created item
+        Web-->>User: Saved card
+        opt Image or link
+            Worker->>Worker: Prepare media or preview
+            Web->>API: Poll existing item reads
+            API-->>Web: Current processing status
+        end
+    else Response lost or save failed
+        Web-->>User: Retain input and offer Retry
+        User->>Web: Retry
+        Web->>API: Repeat identical item request
+        API-->>Web: Existing or newly created item
+    end

@@ -13,6 +13,7 @@ export function ItemCardView({
   imageSrcSet,
   imageSizes,
   mediaState,
+  previewState,
   link,
   selected = false,
   onSelect,
@@ -28,6 +29,7 @@ export function ItemCardView({
   imageSrcSet?: string;
   imageSizes?: string;
   mediaState?: 'pending' | 'failed';
+  previewState?: 'pending' | 'failed';
   link?: { url: string; label: string };
   selected?: boolean;
   onSelect?: () => void;
@@ -96,6 +98,16 @@ export function ItemCardView({
               >
                 {link.label}
               </a>
+            )}
+            {previewState && (
+              <p
+                className="mt-2 text-xs text-muted"
+                role={previewState === 'pending' ? 'status' : undefined}
+              >
+                {previewState === 'pending'
+                  ? 'Preparing link preview…'
+                  : 'Preview unavailable. Your link is saved.'}
+              </p>
             )}
           </div>
           {action}
@@ -174,6 +186,9 @@ export function ItemCard({
       note={item.note}
       imageUrl={broken ? undefined : imageUrl}
       mediaState={mediaState}
+      previewState={
+        item.kind === 'link' && item.preview.status !== 'ready' ? item.preview.status : undefined
+      }
       link={
         item.kind === 'link'
           ? {

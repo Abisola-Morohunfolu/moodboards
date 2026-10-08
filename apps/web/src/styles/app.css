@@ -162,6 +162,10 @@ a {
 .ui-dialog::backdrop {
   background: var(--overlay);
 }
+.ui-dialog.capture-composer,
+.ui-dialog.capture-confirmation {
+  margin: auto;
+}
 .ui-sheet {
   margin: 0 0 0 auto;
   width: min(480px, 100%);
@@ -261,6 +265,27 @@ a {
 .section-menu button {
   width: 100%;
   text-align: left;
+}
+.capture-dropping {
+  outline: 2px solid var(--brand);
+  outline-offset: -4px;
+}
+.capture-tray {
+  position: fixed;
+  z-index: 20;
+  right: 16px;
+  bottom: 76px;
+  width: min(360px, calc(100% - 32px));
+  border-radius: 12px;
+  background: var(--surface);
+  box-shadow: 0 8px 32px rgb(20 27 40 / 18%);
+}
+.capture-entries {
+  max-height: min(320px, 40dvh);
+  overflow: auto;
+  margin: 0;
+  padding: 0;
+  list-style: none;
 }
 /* Layers: canvas controls 10, contextual menus 20, native dialogs in top layer. */
 @media (prefers-reduced-motion: no-preference) {

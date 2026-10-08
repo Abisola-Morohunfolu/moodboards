@@ -1,57 +1,49 @@
 # Product
 
-## Summary
+## Purpose
 
-Moodboard is a visual board where people collect images, links, places, and notes, then agree on what to choose. The board starts as inspiration and ends as a decision: approved items, a budget, a checklist, and an exportable plan.
+Moodboard is a flexible visual board for quickly collecting images, links, and
+notes and arranging them into sections. A board can hold plans, references,
+ideas, or something that has not yet found a use case. It does not require an
+industry, template, approval process, or business account to be useful.
 
-## Audiences
+## Audience and direction
 
-| Audience | Job to be done | Pays how |
-|----------|----------------|----------|
-| Wedding and event planners | Get clients to approve the look item by item | Business plan, monthly |
-| Interior designers | Get clients to approve each room's products and track orders | Business plan, monthly |
-| Couples planning their own wedding | Agree with a partner on every choice and stay in budget | Board Pass, one time |
-| Households | Plan moves, house hunts, and dates over many years | Household plan, or a pass per board |
-| One person | Collect inspiration from phone and laptop | Free |
+Start with people making their own boards. Rooms, celebrations, projects, and
+everyday plans are examples, not product boundaries. Planners and designers can
+also use the existing client sharing and approval features when needed.
 
-Launch with planners. Personal workspaces follow once 10 or more planners pay.
+The previous planner-first launch strategy and paying-planner gates are
+superseded. Personal workspaces already exist and are the default entry point.
+Success comes from actual board-making: people can collect several ideas
+without repeated dialogs, understand what saved, and retry failures safely.
 
-## Problem
+## Current capabilities
 
-Planners juggle Pinterest boards, Canva decks, and email threads to get a client to say "yes, that one". The decision trail lives in email. Couples face the same mess between two people. Existing tools either collect inspiration (Pinterest, Milanote) or run the business (HoneyBook, Aisle Planner). None makes visual approval the core action.
+- Personal and business workspaces, blank boards, sections, notes, images, links.
+- Desktop canvas movement and a responsive mobile grid.
+- Quick capture inside an open board: text/URL paste, image paste/drop, multiple
+  image selection, a text composer, and a progress tray with safe retries.
+- Optional business clients, private board-specific contact links, versioned
+  approvals, rejection, swap requests, and contextual feedback.
 
-## Positioning
+Captures target the current board and section. Pending inputs live in memory
+while the board is open; they do not survive a reload. Saved items are stored
+by the backend. Image and preview processing can finish after an item is saved.
 
-- Against Pinterest, Milanote, and Notion: those are free and good at solo inspiration. Moodboard wins only when a board leads to a decision with someone else.
-- Against HoneyBook and Aisle Planner: those cover contracts and payments. Moodboard covers the visual sign-off and links each item to its vendor.
+## What comes next
 
-## Pricing
+Observe where collecting, arranging, finding, or sharing ideas becomes awkward.
+Choose the next small improvement from that evidence. General sharing,
+organization tools, external capture, export, budgets, and kits are candidates,
+not commitments. Keep specialist workflows optional and avoid building a module
+framework before actual needs establish its shape.
 
-| Plan | Price | Who | What it unlocks |
-|------|-------|-----|-----------------|
-| Free | $0 | Everyone | 2 active boards, 6 invited people per board, upload cap |
-| Board Pass | $29 to $49 per board | Couples, one-off planners | Unlimited items and people on that board, export, larger uploads |
-| Household | about $4 per month or $36 per year | Households with many boards | Passes on every household board |
-| Business | $29 per month, 14-day trial | Planners, designers | Unlimited boards, clients, branding, PDF proposals |
+## Commercial assumptions
 
-Later revenue: affiliate links on vendor and product items, and paid vendor listings.
+Pricing and paid entitlements are undecided. Previous Board Pass, household,
+business subscription prices, revenue targets, and validation quotas are
+historical hypotheses, not the current implementation roadmap or marketing
+claims. Do not build billing until a useful paid capability is established.
 
-Out of scope: moving money between users. Cost splitting and payouts need Stripe Connect, identity checks, and dispute handling.
-
-## Goal
-
-35 paying business workspaces at $29 per month is about $1,000 in monthly recurring revenue. That is the proof point before investing in personal workspaces.
-
-## Validation before building
-
-1. Message 15 planners. Ask how clients approve the look today.
-2. If 5 or more say it hurts, show a clickable mockup.
-3. Ask 3 to pay for the first month before the product exists.
-4. If nobody pays, change the idea before writing code.
-
-## Risks
-
-- Two audiences double marketing and support. Mitigation: planners first, personal growth through planner invites.
-- Consumer churn after one event. Mitigation: one-time pass, household history across boards.
-- Many retail sites block scrapers. Mitigation: Open Graph first, affiliate feeds later, a manual card when a preview fails.
-- The builder works at an accessibility company. Do not build accessibility products. Check the employment agreement for side-project ownership.
+Moving money between users remains out of scope.
