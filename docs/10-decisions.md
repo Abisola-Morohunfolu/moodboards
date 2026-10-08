@@ -4,9 +4,9 @@ Each entry states the decision and the reason. Add a new entry when a choice clo
 
 ## Product
 
-**D1. Launch for planners, not consumers.** Businesses pay monthly and are easy to reach in Facebook groups and on Instagram. Couples plan once.
+**D1. Launch for planners, not consumers (superseded by D55).** Businesses pay monthly and are easy to reach in Facebook groups and on Instagram. Couples plan once.
 
-**D2. One-time Board Pass for personal boards, subscription for businesses.** Personal planning is occasional, so a monthly charge churns. A household plan covers people with many boards.
+**D2. One-time Board Pass for personal boards, subscription for businesses (superseded by D55).** Personal planning is occasional, so a monthly charge churns. A household plan covers people with many boards.
 
 **D3. No payments between users.** Cost splitting with real money needs Stripe Connect, identity checks, and dispute handling. Not worth it at this size.
 
@@ -85,7 +85,7 @@ database state.
 
 ## Model
 
-**D10. Kits are bundles of modules.** New kinds of plan need a kit file, not a migration. Build the module system only when the second kit arrives, so its shape comes from two real cases.
+**D10. Kits are bundles of modules (candidate design; timing superseded by D55).** New kinds of plan need a kit file, not a migration. Introduce a module system only when observed, validated needs establish its shape; a planned second kit alone is not a reason to build it.
 
 **D11. Modules own their tables and never reference another module's tables.** Turning a module off then touches nothing else. A module that needs another's data names it in `uses` and calls its `queries`, and only while that module is on, so it never reads data a disabled module has stopped maintaining.
 
@@ -225,3 +225,21 @@ payload, while conflicts retain the comment and require review of refreshed
 content. Contact-context generations fence caches and late callbacks when another
 invitation changes the browser's contact cookie. This completes the Phase 1
 workflow without a separate feedback dashboard or realtime infrastructure.
+
+
+## General boards and capture
+
+**D55. General board-making comes first; commercial and specialist plans remain hypotheses.**
+The project began as a quick way to collect plans and ideas. An unproven industry
+should not determine its feature sequence. This supersedes D1 and D2, the old
+paying-planner gates, and fixed pricing hypotheses. Preserve implemented client
+features as an optional path. Personal workspaces are the default, and future
+work follows observed board-making friction.
+
+**D56. Quick capture uses existing per-item APIs and an in-memory queue.**
+Three concurrent pipelines and at most 20 unfinished inputs keep bulk capture
+bounded. Each input snapshots its board, section, position, and UUID. Once item
+creation is attempted, its payload is immutable and retries reuse it. Confirmed
+cards appear independently of media processing. Pending inputs live only while
+the board is open; warn before leaving. No batch endpoint, persistence layer,
+module system, or database migration is required.

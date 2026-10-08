@@ -1,6 +1,6 @@
 # Moodboard
 
-A shared mood board that turns inspiration into an agreed plan. Planners and designers use it to get client sign-off. Couples and households use it to plan weddings, moves, house hunts, and dates together.
+A flexible visual board for collecting images, links, notes, and everyday plans. Start with a blank board and arrange ideas your way. Client sharing and approvals are available for business projects when useful.
 
 "Moodboard" is a working name.
 
@@ -29,6 +29,7 @@ A shared mood board that turns inspiration into an agreed plan. Planners and des
 | [docs/18-backend-approvals.md](docs/18-backend-approvals.md) | Client decisions, swap requests, and approval state rules |
 | [docs/19-backend-database-mapping.md](docs/19-backend-database-mapping.md) | Shared entities, query builders, persistence boundaries, and diagrams |
 | [docs/20-web-approvals.md](docs/20-web-approvals.md) | Approver sharing, client decisions, planner feedback, and consistency diagrams |
+| [docs/21-web-quick-capture.md](docs/21-web-quick-capture.md) | Paste/drop capture, multiple images, progress, safe retries, and diagrams |
 
 ## Local development
 
@@ -36,7 +37,7 @@ Use Node.js 24 and pnpm 10.33.0. The backend includes account authentication,
 workspace onboarding, blank canvas boards, sections, and note items, with shared
 database and contract packages. Business clients and contacts have board-specific
 links and isolated read sessions. The worker processes media jobs. The React web
-app provides planner boards, client management, and a mobile client viewer.
+app provides personal and business boards, quick capture, client management, and a mobile client viewer.
 Planners can assign approver links, review feedback, and receive client approvals
 and swap requests through the web app.
 
@@ -147,7 +148,7 @@ tests and is built from pinned upstream source releases.
 
 Approval APIs are described in [work unit 7](docs/18-backend-approvals.md).
 Web approval controls are described in [work unit 9](docs/20-web-approvals.md).
-Starter kits, budget, board archiving, plan entitlements, and realtime follow. See [web work unit 6](docs/17-web-planner-client-ui.md)
+Future capabilities follow evidence from actual board-making; kits, budgets, billing, and realtime are candidates rather than launch requirements. See [web work unit 6](docs/17-web-planner-client-ui.md)
 for the working planner and client interface.
 
 ## Code style

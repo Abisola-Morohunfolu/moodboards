@@ -117,17 +117,22 @@ export const api = {
     }),
   deleteSection: (id: string, sid: string) =>
     request(`/boards/${id}/sections/${sid}`, noContent, { method: 'DELETE' }),
-  createItem: (id: string, input: unknown) =>
-    request(`/boards/${id}/items`, itemResponseSchema, { method: 'POST', body: json(input) }),
+  createItem: (id: string, input: unknown, signal?: AbortSignal) =>
+    request(`/boards/${id}/items`, itemResponseSchema, {
+      method: 'POST',
+      body: json(input),
+      signal,
+    }),
   updateItem: (id: string, input: unknown) =>
     request(`/items/${id}`, itemResponseSchema, { method: 'PATCH', body: json(input) }),
   moveItem: (id: string, input: unknown) =>
     request(`/items/${id}/position`, itemResponseSchema, { method: 'PATCH', body: json(input) }),
   deleteItem: (id: string) => request(`/items/${id}`, noContent, { method: 'DELETE' }),
-  presign: (id: string, mime: string, bytes: number) =>
+  presign: (id: string, mime: string, bytes: number, signal?: AbortSignal) =>
     request(`/boards/${id}/assets/presign`, presignResponseSchema, {
       method: 'POST',
       body: json({ mime, bytes }),
+      signal,
     }),
   assetUrl: (id: string, variant = 'thumbnail', client = false) =>
     request(

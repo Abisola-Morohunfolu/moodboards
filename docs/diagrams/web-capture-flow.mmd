@@ -1,0 +1,11 @@
+flowchart TD
+    A["Paste, drop, text composer, or image picker"] --> B["Classify and validate"]
+    B --> C["Show invalid inputs with reasons"]
+    B --> D["Capture board, section, IDs, and positions"]
+    D --> E["In-memory queue and progress tray"]
+    E --> F["Save through existing APIs"]
+    F --> G["Confirmed item appears on board"]
+    F --> H["Failed input remains available"]
+    H --> I["Retry the same save"]
+    I --> F
+    G --> J["Existing media processing and polling"]

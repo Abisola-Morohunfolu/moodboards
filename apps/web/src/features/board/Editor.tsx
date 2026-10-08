@@ -1,11 +1,17 @@
-import { useEffect, useRef, useState, type FormEvent, type PointerEvent } from 'react';
+import {
+  useEffect,
+  useRef,
+  useState,
+  type FormEvent,
+  type PointerEvent,
+  type DragEvent,
+} from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { Link } from '@tanstack/react-router';
 import {
   ArrowLeft,
   ArrowRight,
   ImagePlus,
-  Link2,
   Minus,
   Plus,
   Pencil,
@@ -30,6 +36,9 @@ import {
   PlannerFeedback,
 } from './ApprovalStatus';
 import { matchingApproval, sectionApprovals, type ApprovalFilter } from './approvals';
+import { captureAnchor, classifyText, transferSources, type CaptureSource } from './capture';
+import { useCapture } from './useCapture';
+import { CaptureTray } from './CaptureTray';
 
 const key = () => `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 7)}`;
 const message = (error: unknown) =>
@@ -42,9 +51,7 @@ export function Editor({ boardId }: { boardId: string }) {
   const list = q.items(boardId);
   const [section, setSection] = useState<string | null>(null);
   const [selectedId, setSelectedId] = useState<string | null>(null);
-  const [composer, setComposer] = useState<
-    'note' | 'link' | 'image' | 'section' | 'rename-section' | null
-  >(null);
+  const [composer, setComposer] = useState<'text' | 'section' | 'rename-section' | null>(null);
   const [share, setShare] = useState(false);
   const [sectionsOpen, setSectionsOpen] = useState(true);
   const [error, setError] = useState('');
@@ -52,11 +59,16 @@ export function Editor({ boardId }: { boardId: string }) {
   const [zoom, setZoom] = useState(1);
   const [pan, setPan] = useState({ x: 0, y: 0 });
   const queuedMoves = useRef(new Map<string, Promise<unknown>>());
-  const draftItemId = useRef<string | null>(null);
+  const filePicker = useRef<HTMLInputElement>(null);
+  const [dropping, setDropping] = useState(false);
   const canvasViewport = useRef<HTMLDivElement>(null);
   const [approvalFilter, setApprovalFilter] = useState<ApprovalFilter>('all');
   const selected = list.data?.find((i) => i.id === selectedId);
-  const editable = detail.data?.role === 'editor' || detail.data?.role === 'owner';
+  const editable =
+    detail.isSuccess &&
+    list.isSuccess &&
+    (detail.data.role === 'editor' || detail.data.role === 'owner');
+  const capture = useCapture(boardId, editable);
   const shareable = detail.data?.role === 'owner';
   const approvalEnabled = !!detail.data?.board.clientId && editable;
   const approvals = q.approvals(boardId, approvalEnabled);
@@ -87,8 +99,96 @@ export function Editor({ boardId }: { boardId: string }) {
     }
   }, [approvalSyncing, list, approvals]);
   useEffect(() => {
-    draftItemId.current = null;
-  }, [composer]);
+    if (detail.data && section && !detail.data.sections.some((entry) => entry.id === section)) {
+      setSection(null);
+    }
+  }, [detail.data, section]);
+
+  function captureInputs(sources: CaptureSource[], point?: { x: number; y: number }) {
+    if (!editable) {
+      return false;
+    }
+    const viewport = canvasViewport.current;
+    const box = viewport?.getBoundingClientRect();
+    const desktop = !!box?.width;
+    const anchor = captureAnchor(
+      {
+        left: desktop ? box!.left : 0,
+        top: desktop ? box!.top : 0,
+        width: desktop ? box!.width : window.innerWidth,
+        scrollLeft: desktop ? viewport!.scrollLeft : 0,
+        scrollTop: desktop ? viewport!.scrollTop : 0,
+        panX: desktop ? pan.x : 0,
+        panY: desktop ? pan.y : 0,
+        zoom: desktop ? zoom : 1,
+      },
+      desktop ? point : undefined,
+    );
+    const orders = list.data?.map((item) => item.zOrder).sort();
+    const problem = capture.queue.enqueue(sources, {
+      ...anchor,
+      sectionId: section,
+      sectionName: section
+        ? (detail.data?.sections.find((entry) => entry.id === section)?.name ?? 'Removed section')
+        : 'Unsorted',
+      lastOrder: orders?.at(-1) ?? null,
+      ...(!point
+        ? {
+            occupied: (list.data ?? [])
+              .filter((item) => item.sectionId === section && !item.deletedAt)
+              .map((item) => ({ x: item.x ?? 48, y: item.y ?? 48 })),
+          }
+        : {}),
+    });
+    setError(problem ?? '');
+    if (!problem) {
+      setApprovalFilter('all');
+    }
+    return !problem;
+  }
+  function ignoreCapture(target: EventTarget) {
+    return (
+      (target instanceof Element &&
+        !!target.closest(
+          'input, textarea, select, [contenteditable]:not([contenteditable="false"]), dialog',
+        )) ||
+      !!document.querySelector('dialog[open]')
+    );
+  }
+  function acceptDrag(event: DragEvent<HTMLElement>) {
+    return (
+      editable &&
+      !ignoreCapture(event.target) &&
+      Array.from(event.dataTransfer.types).some((type) =>
+        ['Files', 'text/plain', 'text/uri-list'].includes(type),
+      )
+    );
+  }
+  useEffect(() => {
+    if (!editable) {
+      return;
+    }
+    // Clicking empty canvas leaves browser focus on body, outside the React main.
+    // Listen at document scope so ordinary board paste still reaches capture.
+    const paste = (event: ClipboardEvent) => {
+      if (
+        event.defaultPrevented ||
+        !event.clipboardData ||
+        !event.target ||
+        ignoreCapture(event.target)
+      ) {
+        return;
+      }
+      const sources = transferSources(event.clipboardData);
+      if (!sources.length) {
+        return;
+      }
+      event.preventDefault();
+      captureInputs(sources);
+    };
+    document.addEventListener('paste', paste);
+    return () => document.removeEventListener('paste', paste);
+  }, [editable, section, pan, zoom, detail.data, list.data, capture.queue]);
 
   async function refresh() {
     await Promise.all([
@@ -241,50 +341,18 @@ export function Editor({ boardId }: { boardId: string }) {
           ),
         );
       } else {
-        const id = (draftItemId.current ??= crypto.randomUUID());
-        const common = {
-          id,
-          title: String(form.get('title') || '').trim() || null,
-          note: String(form.get('note') || '').trim() || null,
-          sectionId: section,
-          x: 48 + visible.length * 24,
-          y: 48 + visible.length * 24,
-          zOrder: key(),
-        };
-        if (composer === 'note') {
-          await perform(() => api.createItem(boardId, { ...common, kind: 'note' }));
+        if (
+          captureInputs(
+            classifyText(
+              String(form.get('text') || ''),
+              String(form.get('title') || '').trim() || undefined,
+            ),
+          )
+        ) {
+          setComposer(null);
         }
-        if (composer === 'link') {
-          await perform(() =>
-            api.createItem(boardId, { ...common, kind: 'link', url: String(form.get('url')) }),
-          );
-        }
-        if (composer === 'image') {
-          const file = form.get('file');
-          if (
-            !(file instanceof File) ||
-            !['image/jpeg', 'image/png', 'image/webp'].includes(file.type) ||
-            file.size > 10485760
-          ) {
-            throw new Error('Choose a JPEG, PNG or WebP under 10 MiB.');
-          }
-          const ticket = await perform(() => api.presign(boardId, file.type, file.size));
-          const uploadHeaders = new Headers(ticket.headers);
-          uploadHeaders.delete('Content-Length');
-          const upload = await fetch(ticket.url, {
-            method: 'PUT',
-            headers: uploadHeaders,
-            body: file,
-          });
-          if (!upload.ok) {
-            throw new Error('Image upload failed. Check storage access and try again.');
-          }
-          await perform(() =>
-            api.createItem(boardId, { ...common, kind: 'image', assetId: ticket.assetId }),
-          );
-        }
+        return;
       }
-      draftItemId.current = null;
       setComposer(null);
       await refresh();
     } catch (cause) {
@@ -293,6 +361,22 @@ export function Editor({ boardId }: { boardId: string }) {
       setBusy(false);
     }
   }
+  const leaveWarning = capture.blocker.status === 'blocked' && (
+    <Dialog
+      label="Leave this board?"
+      className="capture-confirmation"
+      onClose={() => capture.blocker.reset?.()}
+    >
+      <h2 className="text-xl font-semibold">Leave this board?</h2>
+      <p className="mt-3 text-sm leading-6 text-muted">
+        Unfinished captures will be lost. Items already saved will stay on the board.
+      </p>
+      <div className="mt-5 flex flex-wrap gap-2">
+        <PrimaryButton onClick={() => capture.blocker.reset?.()}>Stay on board</PrimaryButton>
+        <SecondaryButton onClick={() => capture.blocker.proceed?.()}>Leave board</SecondaryButton>
+      </div>
+    </Dialog>
+  );
   if (detail.isPending || list.isPending) {
     return (
       <main role="status" aria-label="Opening board" className="space-y-6 p-6">
@@ -308,9 +392,14 @@ export function Editor({ boardId }: { boardId: string }) {
         <p className="mt-3 text-sm text-muted">
           It may have been removed or your access may have changed.
         </p>
-        <Link to="/boards" className="mt-5 inline-flex min-h-11 items-center text-accent underline">
-          Back to boards
-        </Link>
+        <div className="mt-5 flex items-center gap-4">
+          <SecondaryButton onClick={() => void refresh()}>Check access again</SecondaryButton>
+          <Link to="/boards" className="inline-flex min-h-11 items-center text-accent underline">
+            Back to boards
+          </Link>
+        </div>
+        <CaptureTray {...capture} editable={false} />
+        {leaveWarning}
       </main>
     );
   }
@@ -324,19 +413,66 @@ export function Editor({ boardId }: { boardId: string }) {
   };
   const addTools = editable && (
     <>
-      <SecondaryButton onClick={() => setComposer('image')}>
-        <ImagePlus size={17} /> Image
+      <SecondaryButton onClick={() => filePicker.current?.click()}>
+        <ImagePlus size={17} /> Images
       </SecondaryButton>
-      <SecondaryButton onClick={() => setComposer('link')}>
-        <Link2 size={17} /> Link
-      </SecondaryButton>
-      <SecondaryButton onClick={() => setComposer('note')}>
-        <StickyNote size={17} /> Note
+      <SecondaryButton
+        onClick={() => {
+          setError('');
+          setComposer('text');
+        }}
+      >
+        <StickyNote size={17} /> Note or link
       </SecondaryButton>
     </>
   );
   return (
-    <main className="editor-root min-h-dvh bg-paper">
+    <main
+      className="editor-root min-h-dvh bg-paper"
+      onDragOver={(event) => {
+        if (!acceptDrag(event)) {
+          return;
+        }
+        event.preventDefault();
+        event.dataTransfer.dropEffect = 'copy';
+        setDropping(true);
+      }}
+      onDragLeave={(event) => {
+        if (
+          !(event.relatedTarget instanceof Node) ||
+          !event.currentTarget.contains(event.relatedTarget)
+        ) {
+          setDropping(false);
+        }
+      }}
+      onDrop={(event) => {
+        setDropping(false);
+        if (!acceptDrag(event)) {
+          return;
+        }
+        event.preventDefault();
+        const sources = transferSources(event.dataTransfer);
+        if (sources.length) {
+          captureInputs(sources, { x: event.clientX, y: event.clientY });
+        }
+      }}
+    >
+      <input
+        ref={filePicker}
+        type="file"
+        multiple
+        accept="image/jpeg,image/png,image/webp"
+        aria-label="Choose images to add"
+        className="hidden"
+        disabled={!editable}
+        onChange={(event) => {
+          const files = Array.from(event.currentTarget.files ?? []);
+          event.currentTarget.value = '';
+          if (files.length) {
+            captureInputs(files.map((file) => ({ kind: 'image', file })));
+          }
+        }}
+      />
       <header className="flex h-16 items-center justify-between gap-3 border-b border-line bg-surface px-3 md:px-5">
         <div className="flex min-w-0 items-center gap-2">
           <Link
@@ -438,7 +574,7 @@ export function Editor({ boardId }: { boardId: string }) {
           />
         </>
       )}
-      <div className="editor-stage">
+      <div className={`editor-stage ${dropping ? 'capture-dropping' : ''}`}>
         {sectionsOpen && (
           <nav className="section-nav" aria-label="Board sections">
             <div className="mb-3 flex items-center justify-between px-2">
@@ -504,8 +640,24 @@ export function Editor({ boardId }: { boardId: string }) {
             }}
           >
             <div
-              className="relative h-[1800px] w-[2200px] origin-top-left"
-              style={{ transform: `translate(${pan.x}px,${pan.y}px) scale(${zoom})` }}
+              className="relative origin-top-left"
+              style={{
+                transform: `translate(${pan.x}px,${pan.y}px) scale(${zoom})`,
+                width: Math.max(
+                  2200,
+                  ...visible.map((item) => (item.x ?? 48) + 330),
+                  ...capture.entries
+                    .filter((entry) => entry.sectionId === section)
+                    .map((entry) => entry.x + 330),
+                ),
+                height: Math.max(
+                  1800,
+                  ...visible.map((item) => (item.y ?? 48) + 440),
+                  ...capture.entries
+                    .filter((entry) => entry.sectionId === section)
+                    .map((entry) => entry.y + 440),
+                ),
+              }}
             >
               {visible.map((item) => (
                 <div
@@ -555,7 +707,7 @@ export function Editor({ boardId }: { boardId: string }) {
                   {approvalFilter !== 'all' && approvalReady
                     ? 'Choose another approval status to see more items.'
                     : editable
-                      ? 'Add an image, link, or note to start this section.'
+                      ? 'Paste an image, link, or note here. You can also drop images or use the tools above.'
                       : 'Ideas will appear here when they are added.'}
                 </p>
               </div>
@@ -620,7 +772,7 @@ export function Editor({ boardId }: { boardId: string }) {
                   approvalFilter !== 'all' && approvalReady
                     ? 'Choose another approval status to see more items.'
                     : editable
-                      ? 'Add an image, link, or note to begin.'
+                      ? 'Add images, or open Note or link to collect your first idea.'
                       : 'Ideas will appear here when they are added.'
                 }
               />
@@ -640,6 +792,8 @@ export function Editor({ boardId }: { boardId: string }) {
           />
         )}
       </div>
+      <CaptureTray {...capture} editable={editable} />
+      {leaveWarning}
       {editable && section && (
         <details className="fixed bottom-4 left-4 z-20 md:left-5">
           <summary
@@ -707,13 +861,23 @@ export function Editor({ boardId }: { boardId: string }) {
       )}
       {composer && (
         <Dialog
-          label={composer === 'rename-section' ? 'Rename section' : `Add ${composer}`}
-          className="mobile-sheet"
+          label={
+            composer === 'rename-section'
+              ? 'Rename section'
+              : composer === 'text'
+                ? 'Add a note or link'
+                : 'Add section'
+          }
+          className={composer === 'text' ? 'mobile-sheet capture-composer' : 'mobile-sheet'}
           onClose={() => setComposer(null)}
         >
           <div className="flex items-center justify-between gap-3">
             <h2 className="text-xl font-semibold">
-              {composer === 'rename-section' ? 'Rename section' : `Add ${composer}`}
+              {composer === 'rename-section'
+                ? 'Rename section'
+                : composer === 'text'
+                  ? 'Add a note or link'
+                  : 'Add section'}
             </h2>
             <button
               type="button"
@@ -740,33 +904,20 @@ export function Editor({ boardId }: { boardId: string }) {
             ) : (
               <>
                 <Field label="Title (optional)" name="title" maxLength={200} />
-                {composer === 'link' && (
-                  <Field
-                    label="Web address"
-                    name="url"
-                    type="url"
-                    placeholder="https://"
-                    required
-                  />
-                )}
-                {composer === 'image' && (
-                  <Field
-                    label="JPEG, PNG or WebP (10 MiB max)"
-                    name="file"
-                    type="file"
-                    accept="image/jpeg,image/png,image/webp"
-                    required
-                  />
-                )}
                 <label className="flex flex-col gap-2 text-sm font-semibold">
-                  Note (optional)
+                  Text or web addresses
                   <textarea
-                    name="note"
-                    rows={3}
-                    maxLength={20000}
+                    name="text"
+                    rows={5}
+                    required
+                    placeholder="Write a note, or paste one web address per line."
                     className="border border-line bg-surface p-3 font-normal"
                   />
                 </label>
+                <p className="text-sm text-muted">
+                  Web addresses become links. Other text becomes one note, with your line breaks
+                  kept.
+                </p>
               </>
             )}
             {error && (
