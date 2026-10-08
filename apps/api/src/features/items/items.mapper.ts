@@ -33,11 +33,13 @@ export function itemResponses(
   previews: LinkPreviewEntity[],
   role: BoardRole,
   showPricesTo: BoardRole,
+  accessForItem?: (item: ItemEntity) => { role: BoardRole; showPricesTo: BoardRole },
 ): ItemResponse[] {
   const assetsById = new Map(assets.map((asset) => [`${asset.boardId}:${asset.id}`, asset]));
   const previewsById = new Map(previews.map((preview) => [preview.id, preview]));
   return items.map((item): ItemResponse => {
-    const base = noteResponse(item, role, showPricesTo);
+    const context = accessForItem?.(item);
+    const base = noteResponse(item, context?.role ?? role, context?.showPricesTo ?? showPricesTo);
     if (item.kind === 'note') {
       return base;
     }

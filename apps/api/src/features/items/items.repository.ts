@@ -14,6 +14,7 @@ import {
 } from '@moodboard/database';
 import { DataSource, EntityManager } from 'typeorm';
 import { itemResponses } from './items.mapper';
+import { PageCursor } from '../../platform/pagination';
 
 @Injectable()
 export class ItemsRepository {
@@ -37,6 +38,50 @@ export class ItemsRepository {
       .orderBy('item.zOrder COLLATE "C"')
       .addOrderBy('item.id')
       .getMany();
+  }
+  async trash(manager: EntityManager, boardId: string, cursor: PageCursor | null) {
+    const query = manager
+      .createQueryBuilder(ItemEntity, 'item')
+      .addSelect(
+        `to_char(item.deletedAt AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.US"Z"')`,
+        'cursorTime',
+      )
+      .where('item.boardId = :boardId AND item.deletedAt IS NOT NULL', { boardId });
+    if (cursor) {
+      query.andWhere(
+        '(item.deletedAt < :time::timestamptz OR (item.deletedAt = :time::timestamptz AND item.id > :id))',
+        cursor,
+      );
+    }
+    const { entities, raw } = await query
+      .orderBy('item.deletedAt', 'DESC')
+      .addOrderBy('item.id')
+      .limit(21)
+      .getRawAndEntities();
+    return {
+      items: entities.slice(0, 20),
+      time: raw[19]?.cursorTime as string | undefined,
+      hasMore: entities.length > 20,
+    };
+  }
+  async previewLock(manager: EntityManager, itemId: string): Promise<string | null> {
+    const preview = await manager
+      .createQueryBuilder(LinkPreviewEntity, 'preview')
+      .select(['preview.urlHash'])
+      .innerJoin(ItemEntity, 'item', 'item.linkPreviewId = preview.id')
+      .where('item.id = :itemId', { itemId })
+      .getOne();
+    return preview ? `preview:${preview.urlHash.toString('hex')}` : null;
+  }
+  async restore(manager: EntityManager, boardId: string, itemId: string): Promise<ItemEntity> {
+    const result = await manager
+      .createQueryBuilder()
+      .update(ItemEntity)
+      .set({ deletedAt: null, updatedAt: () => 'greatest(clock_timestamp(), updated_at)' })
+      .where('board_id = :boardId AND id = :itemId AND deleted_at IS NOT NULL', { boardId, itemId })
+      .returning('*')
+      .execute();
+    return entityFromRow(manager, ItemEntity, result.raw[0]);
   }
   async get(manager: EntityManager, boardId: string, itemId: string): Promise<ItemEntity> {
     const item = await manager
@@ -111,6 +156,7 @@ export class ItemsRepository {
     items: ItemEntity[],
     role: BoardRole,
     showPricesTo: BoardRole,
+    accessForItem?: (item: ItemEntity) => { role: BoardRole; showPricesTo: BoardRole },
   ) {
     const assetIds = [
       ...new Set(
@@ -157,14 +203,18 @@ export class ItemsRepository {
           .where('preview.id IN (:...previewIds)', { previewIds })
           .getMany()
       : [];
-    return itemResponses(items, assets, previews, role, showPricesTo);
+    return itemResponses(items, assets, previews, role, showPricesTo, accessForItem);
   }
   async update(manager: EntityManager, boardId: string, itemId: string, input: UpdateNoteRequest) {
     const patch = definedPatch(input, ['title', 'note', 'priceCents', 'quantity'] as const);
     const result = await manager
       .createQueryBuilder()
       .update(ItemEntity)
-      .set({ ...patch.values, version: () => 'version + 1', updatedAt: () => 'now()' })
+      .set({
+        ...patch.values,
+        version: () => 'version + 1',
+        updatedAt: () => 'greatest(clock_timestamp(), updated_at)',
+      })
       .where('board_id = :boardId AND id = :itemId AND version = :version AND deleted_at IS NULL', {
         boardId,
         itemId,
@@ -182,7 +232,7 @@ export class ItemsRepository {
     const result = await manager
       .createQueryBuilder()
       .update(ItemEntity)
-      .set({ ...patch.values, updatedAt: () => 'now()' })
+      .set({ ...patch.values, updatedAt: () => 'greatest(clock_timestamp(), updated_at)' })
       .where('board_id = :boardId AND id = :itemId AND deleted_at IS NULL', { boardId, itemId })
       .returning('*')
       .execute();
@@ -195,10 +245,13 @@ export class ItemsRepository {
     };
   }
   async delete(manager: EntityManager, boardId: string, itemId: string): Promise<boolean> {
+    // Markers are millisecond-exact and advance even for a rapid restore/delete cycle.
+    const deletionTime =
+      "greatest(date_trunc('milliseconds', clock_timestamp()), date_trunc('milliseconds', updated_at) + interval '1 millisecond')";
     const result = await manager
       .createQueryBuilder()
       .update(ItemEntity)
-      .set({ deletedAt: () => 'now()', updatedAt: () => 'now()' })
+      .set({ deletedAt: () => deletionTime, updatedAt: () => deletionTime })
       .where('board_id = :boardId AND id = :itemId AND deleted_at IS NULL', { boardId, itemId })
       .execute();
     return (result.affected ?? 0) > 0;

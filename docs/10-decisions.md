@@ -243,3 +243,16 @@ creation is attempted, its payload is immutable and retries reuse it. Confirmed
 cards appear independently of media processing. Pending inputs live only while
 the board is open; warn before leaving. No batch endpoint, persistence layer,
 module system, or database migration is required.
+
+## Organization and recovery
+
+**D57. Search within the selected workspace using current account board access.**
+Literal Postgres substring matching covers saved text and link metadata. Board and
+type filters, paginated results, and item links help locate ideas without introducing
+a separate search service, OCR, or a browser download of every board's items.
+
+**D58. Restore the original item and retain trash without expiry.**
+Restoration preserves content versions, media references, and approval history;
+existing approval reconciliation remains authoritative. A deletion marker prevents
+stale retries from undoing a later deletion, and restoration writes its own atomic
+event to resume media work. Permanent deletion and automatic purge are deferred.

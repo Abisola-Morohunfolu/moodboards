@@ -14,6 +14,8 @@ import { ParticipantsModule } from './features/participants/participants.module'
 import { ClientViewModule } from './features/client-view/client-view.module';
 import { ApprovalsModule } from './features/approvals/approvals.module';
 
+import { SearchModule } from './features/search/search.module';
+
 @Module({})
 export class AppModule {
   static forRoot(environment?: Record<string, unknown>): DynamicModule {
@@ -35,6 +37,7 @@ export class AppModule {
         StorageModule,
         AssetsModule,
         ItemsModule,
+        SearchModule,
         ClientsModule,
         ParticipantsModule,
         ClientViewModule,

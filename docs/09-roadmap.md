@@ -27,10 +27,17 @@ Exit: collect several items without repeated dialogs; partial failures preserve
 successful saves; uncertain retries create no duplicates; processing states are
 separate from save confirmation. Existing client approvals remain functional.
 
+## Work unit 11: find and restore saved ideas
+
+See [requirements and diagrams](22-web-organization-recovery.md).
+
+Workspace search with board/type filters, item navigation, non-expiring trash,
+version-preserving restoration, and resumed media processing are implemented.
+
 ## Evaluate after use
 
 Record friction in collecting, arranging, revisiting, and sharing real boards.
 Select the next bounded improvement from those observations. Potential work:
-organization and recovery, general sharing, cross-board capture, external
+further organization, general sharing, cross-board capture, external
 capture, export, and only then optional specialist capabilities or billing if
 there is evidence for them. These are candidates without dates or revenue gates.

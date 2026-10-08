@@ -12,6 +12,8 @@ import {
   noteListResponseSchema,
   noteResponseSchema,
   sectionResponseSchema,
+  workspaceSearchResponseSchema,
+  trashPageResponseSchema,
 } from '@moodboard/contracts';
 import { AppModule } from '../apps/api/src/app.module';
 import { configureHttp } from '../apps/api/src/app.setup';
@@ -93,6 +95,77 @@ describe('Board core HTTP workflow', () => {
     expect(response.headers['cache-control']).toBe('no-store');
     return boardWithRoleResponseSchema.parse(response.body);
   }
+  it('searches a workspace and restores trash through validated account-only HTTP routes', async () => {
+    const owner = await signup();
+    const board = await createBoard(owner);
+    const input = { id: randomUUID(), kind: 'note', zOrder: 'a0', title: 'Find this idea' };
+    const created = await api()
+      .post(`/boards/${board.id}/items`)
+      .set('Cookie', owner.cookie)
+      .send(input)
+      .expect(201);
+    await api().get(`/workspaces/${owner.workspaceId}/search`).query({ q: 'idea' }).expect(401);
+    const found = await api()
+      .get(`/workspaces/${owner.workspaceId}/search`)
+      .set('Cookie', owner.cookie)
+      .query({ q: 'IDEA', kind: 'note' })
+      .expect(200);
+    expect(found.headers['cache-control']).toBe('no-store');
+    expect(workspaceSearchResponseSchema.parse(found.body).results[0]).toMatchObject({
+      type: 'item',
+      item: { id: input.id },
+    });
+    for (const query of [
+      { q: '' },
+      { q: 'idea', kind: 'video' },
+      { q: 'idea', boardId: 'broken' },
+      { q: 'idea', cursor: 'broken' },
+    ]) {
+      await api()
+        .get(`/workspaces/${owner.workspaceId}/search`)
+        .set('Cookie', owner.cookie)
+        .query(query)
+        .expect(400);
+    }
+    const outsider = await signup();
+    await api()
+      .get(`/workspaces/${owner.workspaceId}/search`)
+      .set('Cookie', outsider.cookie)
+      .query({ q: 'idea' })
+      .expect(404);
+    await api().delete(`/items/${input.id}`).set('Cookie', owner.cookie).expect(204);
+    await api().get(`/boards/${board.id}/items/trash`).expect(401);
+    const trash = await api()
+      .get(`/boards/${board.id}/items/trash`)
+      .set('Cookie', owner.cookie)
+      .expect(200);
+    const tombstone = trashPageResponseSchema.parse(trash.body).items[0]!;
+    await api()
+      .post(`/items/${input.id}/restore`)
+      .set('Cookie', owner.cookie)
+      .send({ deletedAt: 'invalid' })
+      .expect(400);
+    const restored = await api()
+      .post(`/items/${input.id}/restore`)
+      .set('Cookie', owner.cookie)
+      .send({ deletedAt: tombstone.deletedAt })
+      .expect(200);
+    expect(restored.body).toMatchObject({
+      ...created.body,
+      deletedAt: null,
+      updatedAt: expect.any(String),
+    });
+    await api()
+      .post(`/items/${input.id}/restore`)
+      .set('Cookie', owner.cookie)
+      .send({ deletedAt: tombstone.deletedAt })
+      .expect(200);
+    const empty = await api()
+      .get(`/boards/${board.id}/items/trash`)
+      .set('Cookie', owner.cookie)
+      .expect(200);
+    expect(empty.body.items).toEqual([]);
+  });
   it('completes signup, boards in both workspace types, sections, note edits, movement, and deletion', async () => {
     const owner = await signup();
     const personal = await createBoard(owner);

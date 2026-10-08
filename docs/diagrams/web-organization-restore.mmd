@@ -1,0 +1,15 @@
+sequenceDiagram
+    actor User
+    participant Web
+    participant API
+    participant DB as Postgres
+    participant Worker
+    User->>Web: Restore item from trash
+    Web->>API: Item ID and deletion marker
+    API->>DB: Lock preview resource, then board
+    API->>DB: Check permission and deletion marker
+    API->>DB: Restore item and commit item.restored
+    API-->>Web: Current item
+    Web->>Web: Refresh affected views
+    Worker->>DB: Consume restoration event
+    Worker->>Worker: Resume eligible media processing

@@ -15,7 +15,7 @@ export class Dispatcher {
       const events = await this.repository.unfanned(manager);
       for (const event of events) {
         const target =
-          event.type === 'item.created'
+          event.type === 'item.created' || event.type === 'item.restored'
             ? event.payload.kind === 'image'
               ? 'process-image'
               : event.payload.kind === 'link'

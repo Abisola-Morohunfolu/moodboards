@@ -169,3 +169,18 @@ and `/client/assets/:id/url`; logout is `POST /client/logout` with `{}`. These
 routes require only the separate contact cookie and never use account privileges.
 Client-wide links, account-participant changes, and general sharing controls are
 not implemented. Board responses include nullable `clientId`.
+
+## Implemented organization and recovery (work unit 11)
+
+See [requirements and diagrams](22-web-organization-recovery.md). These routes use
+account sessions only and share existing board role/price serialization rules.
+
+| Method | Route | Required permission | Behavior |
+|--------|-------|---------------------|----------|
+| GET | `/workspaces/:id/search` | Workspace membership and current board view access | `q`, optional `boardId`, `kind`, `cursor`; `{ results, nextCursor }`, 20 per page |
+| GET | `/boards/:id/items/trash` | `item.delete` | Optional `cursor`; `{ items, nextCursor }`, newest deletion first |
+| POST | `/items/:id/restore` | `item.delete` | `{ deletedAt }`; 200 current/restored item, 409 stale deletion marker |
+
+Restoration preserves identity, content version, position, and history, and writes
+`item.restored` with item ID, kind, version, and applicable asset/preview IDs. Deleted
+items are excluded from normal reads and search; trash does not expire.

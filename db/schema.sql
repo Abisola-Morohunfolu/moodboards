@@ -250,6 +250,7 @@ create table items (
   foreign key (board_id, created_by) references board_participants (board_id, id),
   foreign key (board_id, asset_id)   references assets (board_id, id)
 );
+create index items_trash on items (board_id, deleted_at desc, id) where deleted_at is not null;
 create index items_board on items (board_id) where deleted_at is null;
 create index items_link_preview on items (link_preview_id) where link_preview_id is not null and deleted_at is null;
 create index items_asset on items (asset_id) where asset_id is not null;

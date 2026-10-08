@@ -7,7 +7,7 @@ import {
   type DragEvent,
 } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
-import { Link } from '@tanstack/react-router';
+import { Link, useNavigate } from '@tanstack/react-router';
 import {
   ArrowLeft,
   ArrowRight,
@@ -28,6 +28,7 @@ import { api, ApiError } from '../../lib/api';
 import { q, useApiAction } from '../../lib/hooks';
 import { ItemCard } from './ItemCard';
 import { ThemeToggle } from '../../components/Theme';
+import { TrashPanel } from './TrashPanel';
 import { SharePanel } from './SharePanel';
 import {
   ApprovalStatus,
@@ -44,7 +45,8 @@ const key = () => `${Date.now().toString(36)}${Math.random().toString(36).slice(
 const message = (error: unknown) =>
   error instanceof Error ? error.message : 'Something went wrong';
 
-export function Editor({ boardId }: { boardId: string }) {
+export function Editor({ boardId, targetItem }: { boardId: string; targetItem?: string }) {
+  const navigate = useNavigate();
   const perform = useApiAction();
   const qc = useQueryClient();
   const detail = q.board(boardId);
@@ -53,6 +55,9 @@ export function Editor({ boardId }: { boardId: string }) {
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [composer, setComposer] = useState<'text' | 'section' | 'rename-section' | null>(null);
   const [share, setShare] = useState(false);
+  const [trashOpen, setTrashOpen] = useState(false);
+  const revealedItem = useRef<string | null>(null);
+  const [unavailable, setUnavailable] = useState(false);
   const [sectionsOpen, setSectionsOpen] = useState(true);
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
@@ -103,6 +108,61 @@ export function Editor({ boardId }: { boardId: string }) {
       setSection(null);
     }
   }, [detail.data, section]);
+
+  useEffect(() => {
+    if (trashOpen) {
+      return;
+    }
+    if (!targetItem) {
+      revealedItem.current = null;
+      setUnavailable(false);
+      return;
+    }
+    if (!detail.isSuccess || !list.isSuccess) {
+      return;
+    }
+    const item = list.data.find((entry) => entry.id === targetItem && !entry.deletedAt);
+    if (!item) {
+      setUnavailable(true);
+      setSelectedId(null);
+      return;
+    }
+    setUnavailable(false);
+    if (revealedItem.current === targetItem) {
+      return;
+    }
+    revealedItem.current = targetItem;
+    setSection(item.sectionId);
+    setApprovalFilter('all');
+    setSelectedId(item.id);
+    setPan({
+      x: Math.max(0, 100 - (item.x ?? 48)),
+      y: Math.max(0, 100 - (item.y ?? 48)),
+    });
+    setZoom(1);
+    const timer = window.requestAnimationFrame(() => {
+      const viewport = canvasViewport.current;
+      if (viewport && viewport.getBoundingClientRect().width > 0) {
+        viewport.scrollTo({
+          left: Math.max(0, (item.x ?? 48) - 100),
+          top: Math.max(0, (item.y ?? 48) - 100),
+        });
+      }
+      const cards = document.querySelectorAll<HTMLElement>('[data-board-item]');
+      const card = Array.from(cards).find(
+        (node) => node.dataset.boardItem === item.id && node.getBoundingClientRect().width > 0,
+      );
+      if (card && !viewport?.getBoundingClientRect().width) {
+        card.scrollIntoView({ block: 'center' });
+      }
+    });
+    return () => window.cancelAnimationFrame(timer);
+  }, [targetItem, trashOpen, detail.isSuccess, list.isSuccess, list.data]);
+  function reveal(id: string) {
+    setTrashOpen(false);
+    revealedItem.current = null;
+    void navigate({ to: '/boards/$boardId', params: { boardId }, search: { item: id } });
+  }
 
   function captureInputs(sources: CaptureSource[], point?: { x: number; y: number }) {
     if (!editable) {
@@ -193,7 +253,12 @@ export function Editor({ boardId }: { boardId: string }) {
   async function refresh() {
     await Promise.all([
       qc.invalidateQueries({ queryKey: ['account', 'board', boardId] }),
-      qc.invalidateQueries({ queryKey: ['account', 'board', boardId, 'items'] }),
+      qc.invalidateQueries({
+        queryKey: ['account', 'workspace', detail.data?.board.workspaceId, 'search'],
+      }),
+      qc.invalidateQueries({
+        queryKey: ['account', 'workspace', detail.data?.board.workspaceId, 'boards'],
+      }),
     ]);
   }
   function saveMove(
@@ -221,7 +286,7 @@ export function Editor({ boardId }: { boardId: string }) {
       .finally(() => {
         if (queuedMoves.current.get(item.id) === next) {
           queuedMoves.current.delete(item.id);
-          void qc.invalidateQueries({ queryKey });
+          void refresh();
         }
       });
     queuedMoves.current.set(item.id, next);
@@ -500,6 +565,12 @@ export function Editor({ boardId }: { boardId: string }) {
         </div>
         <div className="flex items-center gap-2">
           <ThemeToggle />
+          {editable && (
+            <SecondaryButton aria-label="Open board trash" onClick={() => setTrashOpen(true)}>
+              <Trash2 size={16} />
+              <span className="hidden sm:inline">Trash</span>
+            </SecondaryButton>
+          )}
           {shareable && (
             <SecondaryButton aria-label="Share board" onClick={() => setShare(true)}>
               <Share2 size={16} />
@@ -508,6 +579,11 @@ export function Editor({ boardId }: { boardId: string }) {
           )}
         </div>
       </header>
+      {unavailable && (
+        <p role="status" className="border-b border-line bg-cream px-5 py-3 text-sm">
+          This item is no longer available. It may have been moved to trash or your access changed.
+        </p>
+      )}
       {error && !composer && (
         <p
           className="flex items-center justify-between gap-3 border-b border-line bg-danger-soft px-5 py-3 text-sm text-danger"
@@ -662,6 +738,7 @@ export function Editor({ boardId }: { boardId: string }) {
               {visible.map((item) => (
                 <div
                   key={item.id}
+                  data-board-item={item.id}
                   className="absolute w-[250px]"
                   style={{
                     left: item.x ?? 48,
@@ -749,17 +826,18 @@ export function Editor({ boardId }: { boardId: string }) {
           <div className="flex flex-wrap gap-2 px-4 pt-4">{addTools}</div>
           <div className="grid gap-4 p-4 sm:grid-cols-2">
             {visible.map((item) => (
-              <ItemCard
-                key={item.id}
-                item={item}
-                footer={
-                  approvalReady && matchingApproval(item, approvals.data) ? (
-                    <ApprovalStatus status={matchingApproval(item, approvals.data)!.status} />
-                  ) : undefined
-                }
-                selected={selectedId === item.id}
-                onSelect={() => setSelectedId(item.id)}
-              />
+              <div key={item.id} data-board-item={item.id}>
+                <ItemCard
+                  item={item}
+                  footer={
+                    approvalReady && matchingApproval(item, approvals.data) ? (
+                      <ApprovalStatus status={matchingApproval(item, approvals.data)!.status} />
+                    ) : undefined
+                  }
+                  selected={selectedId === item.id}
+                  onSelect={() => setSelectedId(item.id)}
+                />
+              </div>
             ))}
             {!visible.length && (
               <EmptyState
@@ -779,7 +857,7 @@ export function Editor({ boardId }: { boardId: string }) {
             )}
           </div>
         </div>
-        {selected && (
+        {selected && !trashOpen && (
           <Inspector
             key={selected.id}
             item={selected}
@@ -847,6 +925,14 @@ export function Editor({ boardId }: { boardId: string }) {
             </button>
           </div>
         </details>
+      )}
+      {trashOpen && editable && (
+        <TrashPanel
+          boardId={boardId}
+          close={() => setTrashOpen(false)}
+          refresh={refresh}
+          reveal={reveal}
+        />
       )}
       {share && (
         <SharePanel
@@ -1083,7 +1169,7 @@ function Inspector({
         <SecondaryButton
           className="mt-4 w-full"
           onClick={async () => {
-            if (!confirm('Delete this item?')) {
+            if (!confirm('Move this item to trash? You can restore it later.')) {
               return;
             }
             try {
@@ -1095,7 +1181,7 @@ function Inspector({
             }
           }}
         >
-          <Trash2 size={16} /> Delete item
+          <Trash2 size={16} /> Move to trash
         </SecondaryButton>
       )}
     </InspectorSurface>
