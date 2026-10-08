@@ -6,6 +6,7 @@ import { AccountAuth1791072000000 } from '../apps/api/src/database/migrations/17
 import { MediaDeliveryLeases1791158400000 } from '../apps/api/src/database/migrations/1791158400000-media-delivery-leases';
 import { ClientAccess1791244800000 } from '../apps/api/src/database/migrations/1791244800000-client-access';
 import { ApprovalVersions1791331200000 } from '../apps/api/src/database/migrations/1791331200000-approval-versions';
+import { ItemTrash1791417600000 } from '../apps/api/src/database/migrations/1791417600000-item-trash';
 import { migrationsApplied } from '../apps/api/src/database/migration-status';
 import { testDataSource } from './database';
 
@@ -68,6 +69,7 @@ describe('Cumulative schema migrations', () => {
       { name: 'MediaDeliveryLeases1791158400000' },
       { name: 'ClientAccess1791244800000' },
       { name: 'ApprovalVersions1791331200000' },
+      { name: 'ItemTrash1791417600000' },
     ]);
     expect(
       await source.query(
@@ -77,6 +79,7 @@ describe('Cumulative schema migrations', () => {
   });
   it('upgrades and reverts authentication without replacing legacy accounts', async () => {
     const id = '00000000-0000-4000-8000-000000000001';
+    await source.undoLastMigration();
     await source.undoLastMigration();
     await source.undoLastMigration();
     await source.undoLastMigration();
@@ -91,6 +94,7 @@ describe('Cumulative schema migrations', () => {
         'Legacy',
       ]);
       await source.runMigrations();
+      await source.undoLastMigration();
       await source.undoLastMigration();
       expect(
         await source.query('select password_hash, google_subject from users where id=$1', [id]),
@@ -132,6 +136,7 @@ describe('Cumulative schema migrations', () => {
     await source.undoLastMigration();
     await source.undoLastMigration();
     await source.undoLastMigration();
+    await source.undoLastMigration();
     try {
       expect(await migrationsApplied(source)).toBe(false);
       expect(
@@ -153,6 +158,7 @@ describe('Cumulative schema migrations', () => {
         MediaDeliveryLeases1791158400000,
         ClientAccess1791244800000,
         ApprovalVersions1791331200000,
+        ItemTrash1791417600000,
         FailingMigration1791072000001,
       ],
     });
@@ -168,6 +174,7 @@ describe('Cumulative schema migrations', () => {
         { name: 'MediaDeliveryLeases1791158400000' },
         { name: 'ClientAccess1791244800000' },
         { name: 'ApprovalVersions1791331200000' },
+        { name: 'ItemTrash1791417600000' },
       ]);
     } finally {
       await failing.destroy();

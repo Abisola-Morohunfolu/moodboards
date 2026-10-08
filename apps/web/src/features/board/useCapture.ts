@@ -32,6 +32,10 @@ export function useCapture(boardId: string, editable: boolean) {
           }
           qc.setQueryData<ItemResponse[]>(itemKey, (items) => mergeCapturedItem(items, item));
           void qc.invalidateQueries({ queryKey: ['account', 'board', boardId] });
+          void qc.invalidateQueries({
+            queryKey: ['account', 'workspace'],
+            predicate: (query) => query.queryKey[3] === 'search',
+          });
         });
       },
       accessChanged: () => {

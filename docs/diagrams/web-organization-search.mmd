@@ -1,0 +1,6 @@
+flowchart LR
+    U["Search selected workspace"] --> API["NestJS search endpoint"]
+    API --> A["Resolve accessible boards"]
+    A --> DB[("Postgres text matching")]
+    DB --> R["Board and item results"]
+    R --> E["Open board and reveal item"]

@@ -166,6 +166,16 @@ export const boardCoreEventSchema = z.discriminatedUnion('type', [
     }),
   }),
   z.strictObject({
+    type: z.literal('item.restored'),
+    payload: z.strictObject({
+      itemId: z.uuid(),
+      kind: z.enum(['note', 'image', 'link']),
+      assetId: z.uuid().optional(),
+      previewId: z.uuid().optional(),
+      version: integerSchema.positive(),
+    }),
+  }),
+  z.strictObject({
     type: z.literal('item.updated'),
     payload: z.strictObject({
       itemId: z.uuid(),

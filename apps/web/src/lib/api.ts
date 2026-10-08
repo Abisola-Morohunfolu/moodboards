@@ -20,6 +20,9 @@ import {
   decisionResponseSchema,
   type DecisionRequest,
   type AssignContactRequest,
+  workspaceSearchResponseSchema,
+  trashPageResponseSchema,
+  type WorkspaceSearchQuery,
 } from '@moodboard/contracts';
 
 import { clientContext } from './client-context';
@@ -75,6 +78,20 @@ export const boards = (workspaceId: string) =>
   request(`/workspaces/${workspaceId}/boards`, boardListResponseSchema);
 export const board = (id: string) => request(`/boards/${id}`, boardDetailResponseSchema);
 export const items = (id: string) => request(`/boards/${id}/items`, itemListResponseSchema);
+export const searchWorkspace = (id: string, query: WorkspaceSearchQuery, signal?: AbortSignal) => {
+  const params = new URLSearchParams(
+    Object.entries(query).filter(
+      (entry): entry is [string, string] => typeof entry[1] === 'string',
+    ),
+  );
+  return request(`/workspaces/${id}/search?${params}`, workspaceSearchResponseSchema, { signal });
+};
+export const trashItems = (id: string, cursor?: string, signal?: AbortSignal) =>
+  request(
+    `/boards/${id}/items/trash${cursor ? `?cursor=${encodeURIComponent(cursor)}` : ''}`,
+    trashPageResponseSchema,
+    { signal },
+  );
 export const clients = (id: string, archived = false) =>
   request(`/workspaces/${id}/clients?includeArchived=${archived}`, z.array(clientResponseSchema));
 export const contacts = (id: string) =>
@@ -128,6 +145,11 @@ export const api = {
   moveItem: (id: string, input: unknown) =>
     request(`/items/${id}/position`, itemResponseSchema, { method: 'PATCH', body: json(input) }),
   deleteItem: (id: string) => request(`/items/${id}`, noContent, { method: 'DELETE' }),
+  restoreItem: (id: string, deletedAt: string) =>
+    request(`/items/${id}/restore`, itemResponseSchema, {
+      method: 'POST',
+      body: json({ deletedAt }),
+    }),
   presign: (id: string, mime: string, bytes: number, signal?: AbortSignal) =>
     request(`/boards/${id}/assets/presign`, presignResponseSchema, {
       method: 'POST',

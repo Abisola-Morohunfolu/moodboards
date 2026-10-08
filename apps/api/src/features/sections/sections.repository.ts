@@ -53,7 +53,7 @@ export class SectionsRepository {
     await manager
       .createQueryBuilder()
       .update(ItemEntity)
-      .set({ sectionId: null, updatedAt: () => 'now()' })
+      .set({ sectionId: null, updatedAt: () => 'greatest(clock_timestamp(), updated_at)' })
       .where('board_id = :boardId AND section_id = :sectionId', { boardId, sectionId })
       .execute();
     await manager

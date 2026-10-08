@@ -1,4 +1,5 @@
-import { useMutation, useQuery } from '@tanstack/react-query';
+import { useInfiniteQuery, useMutation, useQuery } from '@tanstack/react-query';
+import type { WorkspaceSearchQuery } from '@moodboard/contracts';
 import {
   account,
   boards,
@@ -11,6 +12,8 @@ import {
   clientItems,
   plannerApprovals,
   clientApprovals,
+  searchWorkspace,
+  trashItems,
 } from './api';
 import { clientContext } from './client-context';
 
@@ -20,6 +23,35 @@ export function useApiAction() {
   return <T>(action: () => Promise<T>): Promise<T> => mutation.mutateAsync(action) as Promise<T>;
 }
 export const q = {
+  search: (wid: string, input: Omit<WorkspaceSearchQuery, 'cursor'>) =>
+    useInfiniteQuery({
+      queryKey: ['account', 'workspace', wid, 'search', input],
+      queryFn: ({ pageParam, signal }) =>
+        searchWorkspace(wid, { ...input, ...(pageParam ? { cursor: pageParam } : {}) }, signal),
+      initialPageParam: null as string | null,
+      getNextPageParam: (page) => page.nextCursor,
+      enabled: !!wid && !!input.q.trim(),
+      retry: false,
+      refetchInterval: (query) =>
+        query.state.data?.pages.some((page) =>
+          page.results.some(
+            (hit) =>
+              hit.type === 'item' &&
+              ((hit.item.kind === 'image' && hit.item.asset.status === 'pending') ||
+                (hit.item.kind === 'link' && hit.item.preview.status === 'pending')),
+          ),
+        )
+          ? activeInterval(3000)
+          : false,
+    }),
+  trash: (bid: string) =>
+    useInfiniteQuery({
+      queryKey: ['account', 'board', bid, 'trash'],
+      queryFn: ({ pageParam, signal }) => trashItems(bid, pageParam ?? undefined, signal),
+      initialPageParam: null as string | null,
+      getNextPageParam: (page) => page.nextCursor,
+      retry: false,
+    }),
   account: () => useQuery({ queryKey: ['account', 'me'], queryFn: account, retry: false }),
   boards: (wid: string) =>
     useQuery({

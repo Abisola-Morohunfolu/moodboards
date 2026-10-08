@@ -30,6 +30,7 @@ A flexible visual board for collecting images, links, notes, and everyday plans.
 | [docs/19-backend-database-mapping.md](docs/19-backend-database-mapping.md) | Shared entities, query builders, persistence boundaries, and diagrams |
 | [docs/20-web-approvals.md](docs/20-web-approvals.md) | Approver sharing, client decisions, planner feedback, and consistency diagrams |
 | [docs/21-web-quick-capture.md](docs/21-web-quick-capture.md) | Paste/drop capture, multiple images, progress, safe retries, and diagrams |
+| [docs/22-web-organization-recovery.md](docs/22-web-organization-recovery.md) | Workspace search, item navigation, trash, restoration, and diagrams |
 
 ## Local development
 
@@ -38,7 +39,8 @@ workspace onboarding, blank canvas boards, sections, and note items, with shared
 database and contract packages. Business clients and contacts have board-specific
 links and isolated read sessions. The worker processes media jobs. The React web
 app provides personal and business boards, quick capture, client management, and a mobile client viewer.
-Planners can assign approver links, review feedback, and receive client approvals
+Signed-in users can search saved boards and items within a workspace and restore
+deleted items from board trash. Planners can assign approver links, review feedback, and receive client approvals
 and swap requests through the web app.
 
 Start Docker. Then run these commands from the project root:

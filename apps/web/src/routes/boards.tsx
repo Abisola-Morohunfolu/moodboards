@@ -7,9 +7,21 @@ import { api, ApiError, type account } from '../lib/api';
 import { q, useApiAction } from '../lib/hooks';
 import { ThemeToggle } from '../components/Theme';
 import { Brand } from '../components/Brand';
+import { WorkspaceSearch, type GallerySearch } from '../features/organization/WorkspaceSearch';
 import { BoardPreview } from '../features/board/BoardPreview';
 
-export const Route = createFileRoute('/boards')({ ssr: false, component: BoardsRoute });
+export const Route = createFileRoute('/boards')({
+  ssr: false,
+  validateSearch: (search: Record<string, unknown>): GallerySearch => ({
+    workspace: typeof search.workspace === 'string' ? search.workspace : undefined,
+    q: typeof search.q === 'string' ? search.q.slice(0, 200) : undefined,
+    boardId: typeof search.boardId === 'string' ? search.boardId : undefined,
+    kind: ['image', 'link', 'note'].includes(String(search.kind))
+      ? (search.kind as GallerySearch['kind'])
+      : undefined,
+  }),
+  component: BoardsRoute,
+});
 function BoardsRoute() {
   const location = useLocation();
   return location.pathname === '/boards' ? <BoardsHome /> : <Outlet />;
@@ -49,7 +61,20 @@ function BoardsHome() {
 function BoardsContent({ me }: { me: Awaited<ReturnType<typeof account>> }) {
   const qc = useQueryClient();
   const perform = useApiAction();
-  const [workspaceId, setWorkspaceId] = useState('');
+  const search = Route.useSearch();
+  const navigate = useNavigate();
+  const workspaceId = search.workspace;
+  function changeSearch(patch: Partial<GallerySearch>) {
+    void navigate({
+      to: '/boards',
+      search: (old) => ({ ...old, workspace: old.workspace ?? selectedId, ...patch }),
+      replace: true,
+    });
+  }
+  function setWorkspaceId(id: string) {
+    changeSearch({ workspace: id, boardId: undefined });
+  }
+
   const selected =
     me.workspaces.find((w) => w.id === workspaceId) ??
     me.workspaces.find((w) => w.type === 'personal') ??
@@ -172,57 +197,68 @@ function BoardsContent({ me }: { me: Awaited<ReturnType<typeof account>> }) {
             <Plus size={16} /> New studio
           </button>
         </div>
-        {boards.isPending ? (
-          <div
-            role="status"
-            aria-label="Loading boards"
-            className="mt-8 grid gap-6 sm:grid-cols-2 lg:grid-cols-3"
-          >
-            {[0, 1, 2].map((i) => (
-              <Skeleton key={i} className="aspect-[4/3]" />
-            ))}
-          </div>
-        ) : boards.isError ? (
-          <EmptyState
-            title="Couldn't load boards"
-            detail="Check your connection and try again."
-            action={
-              <SecondaryButton onClick={() => void boards.refetch()}>Try again</SecondaryButton>
-            }
-          />
-        ) : boards.data.length ? (
-          <div className="mt-8 grid gap-x-6 gap-y-9 sm:grid-cols-2 lg:grid-cols-3">
-            {boards.data.map((board) => (
-              <Link
-                key={board.id}
-                to="/boards/$boardId"
-                params={{ boardId: board.id }}
-                className="group min-w-0 rounded-xl"
-              >
-                <BoardPreview boardId={board.id} />
-                <div className="mt-4 flex items-start justify-between gap-3">
-                  <div className="min-w-0">
-                    <h2 className="break-words text-base font-semibold group-hover:text-accent">
-                      {board.title}
-                    </h2>
-                    <p className="mt-1 text-xs capitalize text-muted">{board.role}</p>
+        <WorkspaceSearch
+          key={selectedId}
+          workspaceId={selectedId}
+          boards={boards.data ?? []}
+          value={search}
+          change={changeSearch}
+        />
+        {!search.q?.trim() &&
+          (boards.isPending ? (
+            <div
+              role="status"
+              aria-label="Loading boards"
+              className="mt-8 grid gap-6 sm:grid-cols-2 lg:grid-cols-3"
+            >
+              {[0, 1, 2].map((i) => (
+                <Skeleton key={i} className="aspect-[4/3]" />
+              ))}
+            </div>
+          ) : boards.isError ? (
+            <EmptyState
+              title="Couldn't load boards"
+              detail="Check your connection and try again."
+              action={
+                <SecondaryButton onClick={() => void boards.refetch()}>Try again</SecondaryButton>
+              }
+            />
+          ) : boards.data.length ? (
+            <div className="mt-8 grid gap-x-6 gap-y-9 sm:grid-cols-2 lg:grid-cols-3">
+              {boards.data.map((board) => (
+                <Link
+                  key={board.id}
+                  to="/boards/$boardId"
+                  params={{ boardId: board.id }}
+                  className="group min-w-0 rounded-xl"
+                >
+                  <BoardPreview boardId={board.id} />
+                  <div className="mt-4 flex items-start justify-between gap-3">
+                    <div className="min-w-0">
+                      <h2 className="break-words text-base font-semibold group-hover:text-accent">
+                        {board.title}
+                      </h2>
+                      <p className="mt-1 text-xs capitalize text-muted">{board.role}</p>
+                    </div>
+                    <ArrowUpRight
+                      size={18}
+                      className="shrink-0 text-muted group-hover:text-accent"
+                    />
                   </div>
-                  <ArrowUpRight size={18} className="shrink-0 text-muted group-hover:text-accent" />
-                </div>
-              </Link>
-            ))}
-          </div>
-        ) : (
-          <EmptyState
-            title="Start with an idea"
-            detail="Create a board and bring your images, links, and notes together."
-            action={
-              <SecondaryButton onClick={() => openForm('board')} disabled={!selectedId}>
-                Create your first board
-              </SecondaryButton>
-            }
-          />
-        )}
+                </Link>
+              ))}
+            </div>
+          ) : (
+            <EmptyState
+              title="Start with an idea"
+              detail="Create a board and bring your images, links, and notes together."
+              action={
+                <SecondaryButton onClick={() => openForm('board')} disabled={!selectedId}>
+                  Create your first board
+                </SecondaryButton>
+              }
+            />
+          ))}
       </div>
       {form && (
         <Dialog

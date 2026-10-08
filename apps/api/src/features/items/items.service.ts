@@ -1,8 +1,20 @@
 import { createHash } from 'node:crypto';
 import { resourceLock } from '@moodboard/database';
 import { AssetsService } from '../assets/assets.service';
-import { ConflictException, Injectable, NotFoundException, Optional } from '@nestjs/common';
-import { CreateItemRequest, MoveNoteRequest, UpdateNoteRequest } from '@moodboard/contracts';
+import {
+  BadRequestException,
+  ConflictException,
+  Injectable,
+  NotFoundException,
+  Optional,
+} from '@nestjs/common';
+import {
+  CreateItemRequest,
+  MoveNoteRequest,
+  UpdateNoteRequest,
+  PageQuery,
+  RestoreItemRequest,
+} from '@moodboard/contracts';
 import { AccessService } from '../access/access.service';
 import { SectionsRepository } from '../sections/sections.repository';
 import { BoardEventWriter } from '../../platform/events/board-event.writer';
@@ -10,6 +22,7 @@ import { ItemsRepository } from './items.repository';
 import { ItemPreviewsRepository } from './item-previews.repository';
 import { BoardPrincipal } from '../access/contact-access';
 import { ApprovalsService } from '../approvals/approvals.service';
+import { decodeCursor, encodeCursor } from '../../platform/pagination';
 
 @Injectable()
 export class ItemsService {
@@ -32,6 +45,75 @@ export class ItemsService {
         return this.repository.responses(manager, items, access.role, access.board.showPricesTo);
       },
       false,
+    );
+  }
+  async trash(userId: string, boardId: string, input: PageQuery) {
+    const scope = `trash:${boardId.toLowerCase()}`;
+    const cursor = decodeCursor(input.cursor, scope);
+    if (cursor && cursor.type !== 'item') {
+      throw new BadRequestException('Invalid trash cursor');
+    }
+    return this.access.withBoard(
+      userId,
+      boardId,
+      'item.delete',
+      async (manager, access) => {
+        const page = await this.repository.trash(manager, boardId, cursor);
+        return {
+          items: await this.repository.responses(
+            manager,
+            page.items,
+            access.role,
+            access.board.showPricesTo,
+          ),
+          nextCursor: page.hasMore
+            ? encodeCursor({ scope, type: 'item', time: page.time!, id: page.items.at(-1)!.id })
+            : null,
+        };
+      },
+      false,
+    );
+  }
+  async restore(userId: string, itemId: string, input: RestoreItemRequest) {
+    const boardId = await this.repository.boardId(itemId);
+    return this.access.withBoard(
+      userId,
+      boardId,
+      'item.delete',
+      async (manager, access) => {
+        const current = await this.repository.get(manager, boardId, itemId);
+        if (current.deletedAt === null) {
+          return this.repository.response(manager, current, access.role, access.board.showPricesTo);
+        }
+        if (current.deletedAt.getTime() !== new Date(input.deletedAt).getTime()) {
+          throw new ConflictException(
+            'This item was deleted again. Refresh trash before restoring.',
+          );
+        }
+        const item = await this.repository.restore(manager, boardId, itemId);
+        await this.events.append(manager, boardId, access.participantId!, {
+          type: 'item.restored',
+          payload: {
+            itemId,
+            kind: item.kind,
+            version: item.version,
+            ...(item.assetId ? { assetId: item.assetId } : {}),
+            ...(item.linkPreviewId ? { previewId: item.linkPreviewId } : {}),
+          },
+        });
+        if (access.board.workspaceType === 'business' && access.board.clientId !== null) {
+          await this.approvals?.reconcileBoard(manager, boardId, access.participantId);
+        }
+        return this.repository.response(manager, item, access.role, access.board.showPricesTo);
+      },
+      true,
+      async (manager) => {
+        // Preview completion uses the same resource-before-board lock order as creation.
+        const lock = await this.repository.previewLock(manager, itemId);
+        if (lock) {
+          await resourceLock(manager, lock);
+        }
+      },
     );
   }
   async create(userId: string, boardId: string, input: CreateItemRequest) {

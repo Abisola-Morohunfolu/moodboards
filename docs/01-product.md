@@ -24,6 +24,8 @@ without repeated dialogs, understand what saved, and retry failures safely.
 - Desktop canvas movement and a responsive mobile grid.
 - Quick capture inside an open board: text/URL paste, image paste/drop, multiple
   image selection, a text composer, and a progress tray with safe retries.
+- Workspace search across board titles and saved content, board/type filters,
+  item navigation, and non-expiring board trash with individual restoration.
 - Optional business clients, private board-specific contact links, versioned
   approvals, rejection, swap requests, and contextual feedback.
 
