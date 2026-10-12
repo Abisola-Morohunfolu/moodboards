@@ -1,3 +1,4 @@
+import { spawn } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
 import { AuthRepository } from '../apps/api/src/features/auth/auth.repository';
 import { AuthService } from '../apps/api/src/features/auth/auth.service';
@@ -48,6 +49,38 @@ describe('Atomic account onboarding and shared auth state', () => {
       'truncate users, workspaces, auth_rate_limits, google_auth_attempts cascade',
     );
     await source.destroy();
+  });
+  it('identity-checked support recovery replaces the password and revokes sessions', async () => {
+    const signed = await auth.signup(input);
+    const second = await auth.login(input);
+    const run = (verified: boolean) =>
+      new Promise<number | null>((resolve, reject) => {
+        const child = spawn(
+          process.execPath,
+          [
+            'apps/api/dist/features/auth/support.cli.js',
+            'reset-password',
+            input.email,
+            ...(verified ? ['--identity-verified'] : []),
+          ],
+          {
+            env: { ...process.env, DATABASE_URL: testDatabaseUrl() },
+            stdio: ['pipe', 'ignore', 'inherit'],
+          },
+        );
+        child.on('error', reject);
+        child.on('close', resolve);
+        child.stdin.end('replacement password for beta');
+      });
+    expect(await run(false)).toBe(1);
+    expect(await sessions.resolve(signed.token)).toBeDefined();
+    expect(await run(true)).toBe(0);
+    expect(await sessions.resolve(signed.token)).toBeUndefined();
+    expect(await sessions.resolve(second.token)).toBeUndefined();
+    await expect(auth.login(input)).rejects.toThrow('Invalid email or password');
+    await expect(
+      auth.login({ ...input, password: 'replacement password for beta' }),
+    ).resolves.toHaveProperty('token');
   });
   it('rolls back the entire signup when session creation fails', async () => {
     jest.spyOn(sessions, 'create').mockRejectedValueOnce(new Error('injected failure'));

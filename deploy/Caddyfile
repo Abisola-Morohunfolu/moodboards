@@ -1,0 +1,13 @@
+# Access logs are deliberately disabled: /share/<token> contains a credential.
+{$WEB_DOMAIN} {
+  header Referrer-Policy "no-referrer"
+  header X-Content-Type-Options "nosniff"
+  reverse_proxy web:3000
+}
+{$API_DOMAIN} {
+  header Referrer-Policy "no-referrer"
+  header X-Content-Type-Options "nosniff"
+  reverse_proxy api:3001 {
+    header_up X-Forwarded-For {remote_host}
+  }
+}

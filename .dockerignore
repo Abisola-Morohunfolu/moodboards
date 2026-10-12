@@ -1,0 +1,14 @@
+.git
+.env
+.env.*
+!.env.example
+!deploy/beta.env.example
+node_modules
+**/node_modules
+**/dist
+**/.tanstack
+coverage
+playwright-report
+test-results
+.backups
+.impeccable

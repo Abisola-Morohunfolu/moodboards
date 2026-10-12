@@ -256,3 +256,18 @@ Restoration preserves content versions, media references, and approval history;
 existing approval reconciliation remains authoritative. A deletion marker prevents
 stale retries from undoing a later deletion, and restoration writes its own atomic
 event to resume media work. Permanent deletion and automatic purge are deferred.
+
+## Private beta release
+
+**D59. Gate the invited beta with an explicit email allowlist.** Production requires
+`BETA_SIGNUP_EMAILS`; signup and Google callback check it before provisioning.
+Local development stays open when unset. Existing password login continues when
+an email leaves the invitation list. Support recovery uses the existing password
+hasher and revokes sessions in the same transaction; email resets stay deferred.
+
+**D60. Use one Docker image and Compose for the first deployment.** A Node SSR
+adapter serves the actual TanStack Start build. Separate web/API/worker containers
+share the locked image, and one migration job precedes startup. Postgres and Redis
+retain volumes; private R2 is external. The sole published Caddy proxy terminates
+HTTPS and is explicitly trusted for client IPs. No cloud account or orchestrator
+is assumed. Beta limits are monitored operational boundaries, not automatic quotas.

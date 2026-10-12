@@ -27,7 +27,10 @@
     "check": "pnpm format:check && pnpm lint && pnpm build && pnpm typecheck && pnpm test:unit && pnpm test:integration && pnpm test:e2e",
     "dev:worker": "pnpm build && pnpm --filter @moodboard/worker dev",
     "start:worker": "pnpm --filter @moodboard/worker start",
-    "storage:smoke:r2": "pnpm build && node --env-file=.env scripts/smoke-r2.mjs"
+    "storage:smoke:r2": "pnpm build && node --env-file=.env scripts/smoke-r2.mjs",
+    "test:browser": "playwright test",
+    "beta:deploy": "bash scripts/beta-deploy.sh",
+    "beta:backup": "bash scripts/beta-backup.sh"
   },
   "devDependencies": {
     "@aws-sdk/client-s3": "3.1146.0",
@@ -35,6 +38,7 @@
     "@nestjs/common": "11.2.7",
     "@nestjs/config": "4.0.4",
     "@nestjs/testing": "11.2.7",
+    "@playwright/test": "1.64.0",
     "@types/jest": "30.0.0",
     "@types/node": "24.10.1",
     "@types/pg": "8.15.5",

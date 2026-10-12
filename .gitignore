@@ -7,3 +7,8 @@ dist/
 .impeccable/
 coverage/
 *.tsbuildinfo
+.env.*
+!.env.example
+.backups/
+playwright-report/
+test-results/

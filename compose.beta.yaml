@@ -1,0 +1,147 @@
+name: moodboard-beta
+x-app: &app
+  image: ${RELEASE_IMAGE:?Set an immutable RELEASE_IMAGE tag}
+  build:
+    context: .
+    args:
+      VITE_API_URL: https://${API_DOMAIN:?Set API_DOMAIN}
+      VITE_SUPPORT_EMAIL: ${SUPPORT_EMAIL:-}
+  restart: unless-stopped
+  init: true
+  env_file: ${BETA_ENV_FILE:-.env.beta}
+  environment: &environment
+    NODE_ENV: production
+    DATABASE_URL: postgres://moodboard:${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD}@postgres:5432/moodboard
+    REDIS_URL: redis://:${REDIS_PASSWORD:?Set REDIS_PASSWORD}@redis:6379
+    AUTH_ALLOWED_ORIGINS: https://${WEB_DOMAIN:?Set WEB_DOMAIN}
+    PUBLIC_WEB_URL: https://${WEB_DOMAIN}
+    PUBLIC_API_URL: https://${API_DOMAIN}
+    AUTH_TRUSTED_PROXIES: 172.30.0.10
+    API_HOST: 0.0.0.0
+    WORKER_HOST: 0.0.0.0
+    WEB_HOST: 0.0.0.0
+  networks:
+    - beta
+  logging:
+    driver: local
+    options:
+      max-size: 10m
+      max-file: '3'
+services:
+  postgres:
+    image: postgres:15-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: moodboard
+      POSTGRES_USER: moodboard
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD}
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U moodboard -d moodboard']
+      interval: 10s
+      timeout: 3s
+      retries: 10
+    networks: [beta]
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    environment:
+      REDIS_PASSWORD: ${REDIS_PASSWORD:?Set REDIS_PASSWORD}
+    command:
+      [
+        'sh',
+        '-c',
+        'exec redis-server --requirepass "$$REDIS_PASSWORD" --appendonly yes --maxmemory 256mb --maxmemory-policy noeviction',
+      ]
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test: ['CMD-SHELL', 'REDISCLI_AUTH="$$REDIS_PASSWORD" redis-cli ping | grep -q PONG']
+      interval: 10s
+      timeout: 3s
+      retries: 10
+    networks: [beta]
+  migrate:
+    <<: *app
+    restart: 'no'
+    command: ['node', 'apps/api/dist/database/cli.js', 'run']
+    depends_on:
+      postgres: { condition: service_healthy }
+  api:
+    <<: *app
+    command: ['node', 'apps/api/dist/main.js']
+    depends_on:
+      migrate: { condition: service_completed_successfully }
+      redis: { condition: service_healthy }
+    healthcheck:
+      test:
+        [
+          'CMD',
+          'node',
+          '-e',
+          "fetch('http://127.0.0.1:3001/health/ready').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))",
+        ]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+  worker:
+    <<: *app
+    command: ['node', 'apps/worker/dist/main.js']
+    depends_on:
+      migrate: { condition: service_completed_successfully }
+      redis: { condition: service_healthy }
+    healthcheck:
+      test:
+        [
+          'CMD',
+          'node',
+          '-e',
+          "fetch('http://127.0.0.1:3002/health/ready').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))",
+        ]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+  web:
+    <<: *app
+    command: ['node', 'server.mjs']
+    working_dir: /app/apps/web
+    depends_on:
+      api: { condition: service_healthy }
+    healthcheck:
+      test:
+        [
+          'CMD',
+          'node',
+          '-e',
+          "fetch('http://127.0.0.1:3000/help').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))",
+        ]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+  proxy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    environment:
+      WEB_DOMAIN: ${WEB_DOMAIN}
+      API_DOMAIN: ${API_DOMAIN}
+    ports: ['80:80', '443:443', '443:443/udp']
+    volumes:
+      - ./deploy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+      - caddy-config:/config
+    depends_on:
+      web: { condition: service_healthy }
+    networks:
+      beta:
+        ipv4_address: 172.30.0.10
+networks:
+  beta:
+    ipam:
+      config:
+        - subnet: 172.30.0.0/24
+volumes:
+  postgres-data:
+  redis-data:
+  caddy-data:
+  caddy-config:

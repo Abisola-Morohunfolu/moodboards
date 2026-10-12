@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { isIP } from 'node:net';
 import { r2Config } from '@moodboard/storage';
 
 const databaseUrl = z
@@ -65,6 +66,39 @@ const environmentSchema = z
         typeof value === 'string' ? value.split(',').map((origin) => origin.trim()) : value,
       z.array(originSchema).min(1).default(['http://localhost:3000', 'http://127.0.0.1:3000']),
     ),
+    BETA_SIGNUP_EMAILS: z.preprocess(
+      (value) =>
+        typeof value === 'string'
+          ? value
+              .split(',')
+              .map((email) => email.trim().toLowerCase())
+              .filter(Boolean)
+          : value,
+      z.array(z.email()).optional(),
+    ),
+    AUTH_TRUSTED_PROXIES: z.preprocess(
+      (value) =>
+        typeof value === 'string'
+          ? value
+              .split(',')
+              .map((address) => address.trim())
+              .filter(Boolean)
+          : value,
+      z
+        .array(
+          z.string().refine((address) => {
+            const [ip, bits, extra] = address.split('/');
+            const family = isIP(ip ?? '');
+            return (
+              !!family &&
+              !extra &&
+              (bits === undefined ||
+                (/^\d+$/.test(bits) && Number(bits) <= (family === 4 ? 32 : 128)))
+            );
+          }),
+        )
+        .default([]),
+    ),
     GOOGLE_CLIENT_ID: z.string().min(1).optional(),
     GOOGLE_CLIENT_SECRET: z.string().min(1).optional(),
     GOOGLE_CALLBACK_URL: z
@@ -109,6 +143,13 @@ const environmentSchema = z
       });
     }
     if (config.NODE_ENV === 'production') {
+      if (!config.BETA_SIGNUP_EMAILS?.length) {
+        context.addIssue({
+          code: 'custom',
+          path: ['BETA_SIGNUP_EMAILS'],
+          message: 'Private beta requires invited emails',
+        });
+      }
       if (config.PUBLIC_API_URL && !config.PUBLIC_API_URL.startsWith('https://')) {
         context.addIssue({ code: 'custom', path: ['PUBLIC_API_URL'], message: 'HTTPS required' });
       }
