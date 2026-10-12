@@ -3,6 +3,7 @@ import {
   Body,
   Controller,
   Get,
+  ForbiddenException,
   HttpCode,
   Post,
   Query,
@@ -52,6 +53,14 @@ export class AuthController {
     private readonly limits: RateLimitService,
     private readonly config: ConfigService<ApiConfig, true>,
   ) {}
+  private requireInvitation(email: string): void {
+    const invited = this.config.get('BETA_SIGNUP_EMAILS', { infer: true });
+    if (invited && !invited.includes(email.trim().toLowerCase())) {
+      throw new ForbiddenException(
+        'Private beta signup requires an invitation. Contact your beta operator.',
+      );
+    }
+  }
   private get production(): boolean {
     return this.config.get('NODE_ENV', { infer: true }) === 'production';
   }
@@ -63,6 +72,7 @@ export class AuthController {
     @Res({ passthrough: true }) response: Response,
   ) {
     await this.limits.enforce('signup', request.ip ?? 'unknown', 5, response);
+    this.requireInvitation(input.email);
     const result = await this.auth.signup(input);
     writeCookie(response, SESSION_COOKIE, result.token, this.production, SESSION_SECONDS);
     return result.account;
@@ -119,6 +129,7 @@ export class AuthController {
       throw new BadRequestException('Missing Google authorization code');
     }
     const identity = await this.google.exchange(parsed.data.code, attempt);
+    this.requireInvitation(identity.email);
     const result = await this.auth.google(identity);
     writeCookie(response, SESSION_COOKIE, result.token, this.production, SESSION_SECONDS);
     return result.account;

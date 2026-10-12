@@ -228,3 +228,18 @@ outages with existing sessions still working, stalled Redis connection recovery,
 Google state replay and identity collisions, invalid provider claims,
 and cumulative migration upgrade/revert with legacy rows. No live Google access
 or development database is required.
+
+## Private beta account support
+
+Production now requires nonempty `BETA_SIGNUP_EMAILS`, a comma-separated list of
+invited addresses. Password signup and Google callbacks reject unlisted addresses
+with 403 before creating an account. Existing password login is unaffected by
+removing an invitation. Google remains unadvertised in the web UI.
+
+`AUTH_TRUSTED_PROXIES` accepts explicit proxy IPs/CIDRs and defaults to no trust.
+Use the Compose proxy address only for the Docker baseline; verify forwarded-IP
+rate limiting if adding another proxy. The compiled `support.cli.js` offers
+identity-checked password replacement via stdin and atomically revokes all account
+sessions. See [operator procedures](24-private-beta-operations.md) for identity
+checks, commands, support logging, and supported deletion requests. This does not
+provide self-service password reset or email verification.

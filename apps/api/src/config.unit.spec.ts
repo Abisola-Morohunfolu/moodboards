@@ -46,6 +46,7 @@ describe('API configuration', () => {
       validateEnvironment({
         ...valid,
         NODE_ENV: 'production',
+        BETA_SIGNUP_EMAILS: 'invited@example.com',
         AUTH_ALLOWED_ORIGINS: 'https://app.example.com',
         GOOGLE_CLIENT_ID: 'client',
         GOOGLE_CLIENT_SECRET: 'secret',
@@ -55,6 +56,30 @@ describe('API configuration', () => {
       AUTH_ALLOWED_ORIGINS: ['https://app.example.com'],
       GOOGLE_CLIENT_ID: 'client',
     });
+  });
+  it('requires invitations in production and validates explicit proxy addresses', () => {
+    expect(() =>
+      validateEnvironment({
+        ...valid,
+        NODE_ENV: 'production',
+        AUTH_ALLOWED_ORIGINS: 'https://app.example.com',
+      }),
+    ).toThrow('BETA_SIGNUP_EMAILS');
+    expect(
+      validateEnvironment({
+        ...valid,
+        BETA_SIGNUP_EMAILS: ' Invited@Example.com ',
+        AUTH_TRUSTED_PROXIES: '172.30.0.10,::1/128',
+      }),
+    ).toMatchObject({
+      BETA_SIGNUP_EMAILS: ['invited@example.com'],
+      AUTH_TRUSTED_PROXIES: ['172.30.0.10', '::1/128'],
+    });
+    for (const proxy of ['true', '1', '10.0.0.1/33', '::1/129', '10.0.0.1/8/extra']) {
+      expect(() => validateEnvironment({ ...valid, AUTH_TRUSTED_PROXIES: proxy })).toThrow(
+        'AUTH_TRUSTED_PROXIES',
+      );
+    }
   });
   it('does not include credentials in an error', () => {
     expect(() => validateEnvironment({ DATABASE_URL: 'https://user:secret@localhost/db' })).toThrow(

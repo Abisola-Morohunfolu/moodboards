@@ -4,6 +4,8 @@ import { ApiConfig } from './config';
 
 export function configureHttp(app: INestApplication): void {
   const config = app.get(ConfigService<ApiConfig, true>);
+  const proxies = config.get('AUTH_TRUSTED_PROXIES', { infer: true });
+  app.getHttpAdapter().getInstance().set('trust proxy', proxies);
   const origins = config.get('AUTH_ALLOWED_ORIGINS', { infer: true });
   app.enableCors({
     origin: origins,

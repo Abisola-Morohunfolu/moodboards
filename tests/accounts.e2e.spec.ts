@@ -1,4 +1,5 @@
 import { Controller, Get, INestApplication, UnauthorizedException } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { Test } from '@nestjs/testing';
 import { DataSource } from 'typeorm';
 import request from 'supertest';
@@ -82,6 +83,25 @@ describe('Account and workspace HTTP onboarding', () => {
     configureHttp(app);
     google = app.get(GoogleService);
     await app.listen(0, '127.0.0.1');
+  });
+  it('gates invitations without creating accounts and preserves existing login', async () => {
+    const config = app.get(ConfigService);
+    config.set('BETA_SIGNUP_EMAILS', ['planner@example.com']);
+    try {
+      await request(app.getHttpServer())
+        .post('/auth/signup')
+        .send({ ...input, email: 'outsider@example.com' })
+        .expect(403);
+      expect((await source.query('select count(*)::int as count from users'))[0].count).toBe(0);
+      await request(app.getHttpServer()).post('/auth/signup').send(input).expect(201);
+      config.set('BETA_SIGNUP_EMAILS', []);
+      await request(app.getHttpServer())
+        .post('/auth/login')
+        .send({ email: input.email, password: input.password })
+        .expect(200);
+    } finally {
+      config.set('BETA_SIGNUP_EMAILS', undefined);
+    }
   });
   beforeEach(async () => {
     await store.client.flushDb();
