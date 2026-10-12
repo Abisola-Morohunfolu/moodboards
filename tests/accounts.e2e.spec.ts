@@ -13,6 +13,7 @@ import { configureHttp } from '../apps/api/src/app.setup';
 import { AuthPrincipal, CurrentUser, Public } from '../apps/api/src/features/auth/auth.decorators';
 import { FLOW_COOKIE, SESSION_COOKIE, tokenHash } from '../apps/api/src/features/auth/cookies';
 import { GoogleService } from '../apps/api/src/features/auth/google.service';
+import { RateLimitService } from '../apps/api/src/features/auth/rate-limit.service';
 import { RedisRateLimitStore } from '../apps/api/src/features/auth/redis-rate-limit.store';
 import { testRateLimitStore, testRedisUrl } from './redis';
 import { testDatabaseUrl, testDataSource } from './database';
@@ -101,6 +102,25 @@ describe('Account and workspace HTTP onboarding', () => {
         .expect(200);
     } finally {
       config.set('BETA_SIGNUP_EMAILS', undefined);
+    }
+  });
+  it('ignores spoofed forwarded IPs unless the connecting proxy is explicitly trusted', async () => {
+    const server = app.getHttpAdapter().getInstance();
+    const enforce = jest.spyOn(app.get(RateLimitService), 'enforce').mockResolvedValue();
+    const attempt = () =>
+      request(app.getHttpServer())
+        .post('/auth/login')
+        .set('X-Forwarded-For', '203.0.113.25')
+        .send({ email: input.email, password: input.password })
+        .expect(401);
+    await attempt();
+    expect(enforce.mock.calls[0]?.[1]).toBe('127.0.0.1');
+    try {
+      server.set('trust proxy', ['127.0.0.1']);
+      await attempt();
+      expect(enforce.mock.calls[1]?.[1]).toBe('203.0.113.25');
+    } finally {
+      server.set('trust proxy', []);
     }
   });
   beforeEach(async () => {

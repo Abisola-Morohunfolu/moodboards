@@ -7,7 +7,7 @@ function Page() {
       <section>
         <h2>Capture your first idea</h2>
         <p>
-          Create a board, then use Add text or Add images. Paste text or a web address onto the
+          Create a board, then use Note or link or Images. Paste text or a web address onto the
           board. On desktop, you can also drop image files onto the canvas. JPEG, PNG, and WebP
           files up to 10 MiB are supported.
         </p>

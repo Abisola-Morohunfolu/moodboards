@@ -31,6 +31,8 @@ A flexible visual board for collecting images, links, notes, and everyday plans.
 | [docs/20-web-approvals.md](docs/20-web-approvals.md) | Approver sharing, client decisions, planner feedback, and consistency diagrams |
 | [docs/21-web-quick-capture.md](docs/21-web-quick-capture.md) | Paste/drop capture, multiple images, progress, safe retries, and diagrams |
 | [docs/22-web-organization-recovery.md](docs/22-web-organization-recovery.md) | Workspace search, item navigation, trash, restoration, and diagrams |
+| [docs/23-mvp-release-checklist.md](docs/23-mvp-release-checklist.md) | Remaining beta/public release work, deferred features, and audit validation |
+| [docs/24-private-beta-operations.md](docs/24-private-beta-operations.md) | Docker deployment, invited accounts, support, backups, monitoring, and rollback |
 
 ## Local development
 
@@ -194,3 +196,35 @@ moving a responsibility between packages.
 - Change the spec in the same commit as the code it describes.
 - Add a new entry to `docs/10-decisions.md` when a choice closes off an alternative.
 - `db/schema.sql` is the reference model. Real migrations live in the API.
+
+## Private beta deployment and browser checks
+
+Use the [Docker operator runbook](docs/24-private-beta-operations.md) and
+`deploy/beta.env.example`; production signup requires invited emails. Google
+sign-in remains unadvertised. Support can replace a verified user's password
+through the compiled recovery CLI, which revokes account sessions. Public
+self-service recovery, verified email, and enforced total quotas remain deferred.
+
+After `pnpm check`, with the same disposable TEST_* variables exported and test
+services running, run:
+
+```bash
+pnpm exec playwright install chromium firefox webkit
+pnpm test:browser
+```
+
+The browser harness refuses non-loopback services and production database/bucket
+names. It starts the real API and media worker on 3011/3012 and builds/starts the
+production Node SSR web adapter on 3010. Do not run HTTP/database tests against
+the same disposable database concurrently. Keep ports 3010–3012 free. It preserves
+only failure traces/screenshots plus selected light/dark visual acceptance images
+in ignored `test-results/`. CI installs browser system dependencies and runs both
+repository checks and browser smokes for each release-stack branch.
+
+The smoke suite covers capture and private image processing, desktop keyboard and
+pointer movement, rename, reload, search, trash/restore, lost sessions, and
+clipboard-denied business link copy/rotation/revocation on Chromium, Firefox,
+WebKit, and a mobile viewport. Chromium also checks image URL refresh, uncertain
+saves/navigation warnings, and a 200-item board with an independent active user.
+Real R2, actual Safari, physical-phone capture/native drag-drop, deployed cookies,
+backup/alert installation, and final operator notices remain launch acceptance.

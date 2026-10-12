@@ -7,8 +7,12 @@ compose=(docker compose --env-file "$BETA_ENV_FILE" -f compose.beta.yaml)
 "${compose[@]}" config --quiet
 "${compose[@]}" build api
 "${compose[@]}" up -d --wait postgres redis
-if "${compose[@]}" exec -T postgres psql -U moodboard -d moodboard -Atc "select to_regclass('public.users') is not null" | grep -qx t; then
-  bash scripts/beta-backup.sh
-fi
+# Keep the query outside a conditional so its failure stops rollout under set -e.
+has_users=$("${compose[@]}" exec -T postgres psql -U moodboard -d moodboard -Atc "select to_regclass('public.users') is not null")
+case "$has_users" in
+  t) bash scripts/beta-backup.sh ;;
+  f) ;;
+  *) printf 'Could not determine whether a database backup is required.\n' >&2; exit 1 ;;
+esac
 "${compose[@]}" run --rm --no-deps migrate
 "${compose[@]}" up -d --wait api worker web proxy

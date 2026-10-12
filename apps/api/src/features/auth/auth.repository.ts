@@ -9,14 +9,19 @@ export type CredentialRow = Pick<UserEntity, 'id' | 'passwordHash' | 'deletedAt'
 @Injectable()
 export class AuthRepository {
   constructor(private readonly source: DataSource) {}
-  async credentials(email: string): Promise<CredentialRow | undefined> {
-    return (
-      (await this.source.manager
-        .createQueryBuilder(UserEntity, 'user')
-        .select(['user.id', 'user.passwordHash', 'user.deletedAt'])
-        .where('user.email = :email', { email })
-        .getOne()) ?? undefined
-    );
+  async credentials(
+    email: string,
+    manager = this.source.manager,
+    lock = false,
+  ): Promise<CredentialRow | undefined> {
+    const query = manager
+      .createQueryBuilder(UserEntity, 'user')
+      .select(['user.id', 'user.passwordHash', 'user.deletedAt'])
+      .where('user.email = :email', { email });
+    if (lock) {
+      query.setLock('pessimistic_write');
+    }
+    return (await query.getOne()) ?? undefined;
   }
   async googleUser(manager: EntityManager, subject: string): Promise<CredentialRow | undefined> {
     return (
