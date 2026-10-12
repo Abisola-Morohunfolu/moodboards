@@ -1,13 +1,15 @@
+import { InfoLinks } from '../components/BetaInfo';
 import { createFileRoute, Link, Outlet, useLocation, useNavigate } from '@tanstack/react-router';
 import { useQueryClient } from '@tanstack/react-query';
 import { useEffect, useState, type FormEvent } from 'react';
 import { Dialog, EmptyState, Field, PrimaryButton, SecondaryButton, Skeleton } from '@moodboard/ui';
-import { ArrowUpRight, Plus, LogOut, X } from 'lucide-react';
+import { ArrowUpRight, Plus, LogOut, X, Pencil } from 'lucide-react';
 import { api, ApiError, type account } from '../lib/api';
 import { q, useApiAction } from '../lib/hooks';
 import { ThemeToggle } from '../components/Theme';
 import { Brand } from '../components/Brand';
 import { WorkspaceSearch, type GallerySearch } from '../features/organization/WorkspaceSearch';
+import { RenameBoard } from '../features/board/RenameBoard';
 import { BoardPreview } from '../features/board/BoardPreview';
 
 export const Route = createFileRoute('/boards')({
@@ -81,6 +83,7 @@ function BoardsContent({ me }: { me: Awaited<ReturnType<typeof account>> }) {
     me.workspaces[0];
   const selectedId = selected?.id ?? '';
   const boards = q.boards(selectedId);
+  const [renaming, setRenaming] = useState<{ id: string; title: string } | null>(null);
   const [form, setForm] = useState<'workspace' | 'board' | null>(null);
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
@@ -226,26 +229,37 @@ function BoardsContent({ me }: { me: Awaited<ReturnType<typeof account>> }) {
           ) : boards.data.length ? (
             <div className="mt-8 grid gap-x-6 gap-y-9 sm:grid-cols-2 lg:grid-cols-3">
               {boards.data.map((board) => (
-                <Link
-                  key={board.id}
-                  to="/boards/$boardId"
-                  params={{ boardId: board.id }}
-                  className="group min-w-0 rounded-xl"
-                >
-                  <BoardPreview boardId={board.id} />
-                  <div className="mt-4 flex items-start justify-between gap-3">
-                    <div className="min-w-0">
-                      <h2 className="break-words text-base font-semibold group-hover:text-accent">
-                        {board.title}
-                      </h2>
-                      <p className="mt-1 text-xs capitalize text-muted">{board.role}</p>
+                <div key={board.id} className="relative min-w-0">
+                  <Link
+                    to="/boards/$boardId"
+                    params={{ boardId: board.id }}
+                    className="group min-w-0 rounded-xl"
+                  >
+                    <BoardPreview boardId={board.id} />
+                    <div className="mt-4 flex items-start justify-between gap-3">
+                      <div className="min-w-0">
+                        <h2 className="break-words text-base font-semibold group-hover:text-accent">
+                          {board.title}
+                        </h2>
+                        <p className="mt-1 text-xs capitalize text-muted">{board.role}</p>
+                      </div>
+                      <ArrowUpRight
+                        size={18}
+                        className="shrink-0 text-muted group-hover:text-accent"
+                      />
                     </div>
-                    <ArrowUpRight
-                      size={18}
-                      className="shrink-0 text-muted group-hover:text-accent"
-                    />
-                  </div>
-                </Link>
+                  </Link>
+                  {board.role === 'owner' && (
+                    <button
+                      type="button"
+                      aria-label={`Rename ${board.title}`}
+                      onClick={() => setRenaming(board)}
+                      className="mt-2 inline-flex min-h-11 items-center gap-2 rounded-lg px-3 text-sm text-muted hover:bg-cream"
+                    >
+                      <Pencil size={15} /> Rename
+                    </button>
+                  )}
+                </div>
               ))}
             </div>
           ) : (
@@ -260,6 +274,16 @@ function BoardsContent({ me }: { me: Awaited<ReturnType<typeof account>> }) {
             />
           ))}
       </div>
+      <footer className="mx-auto max-w-7xl px-5 pb-6 md:px-10">
+        <InfoLinks />
+      </footer>
+      {renaming && (
+        <RenameBoard
+          boardId={renaming.id}
+          title={renaming.title}
+          onClose={() => setRenaming(null)}
+        />
+      )}
       {form && (
         <Dialog
           label={form === 'workspace' ? 'New studio' : 'New board'}

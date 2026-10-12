@@ -26,6 +26,9 @@ export function SharePanel({
   const [busy, setBusy] = useState(false);
   const [copied, setCopied] = useState('');
   const [contactId, setContactId] = useState('');
+  const [selectedClient, setSelectedClient] = useState('');
+  const [link, setLink] = useState<{ participantId: string; url: string } | null>(null);
+  const [copyNotice, setCopyNotice] = useState('');
   const [expiry, setExpiry] = useState('');
   const [role, setRole] = useState<AssignContactRequest['role']>('viewer');
   async function refresh() {
@@ -45,15 +48,28 @@ export function SharePanel({
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : 'Could not complete action');
     } finally {
-      await refresh();
-      setBusy(false);
+      try {
+        await refresh();
+      } finally {
+        setBusy(false);
+      }
+    }
+  }
+  async function presentLink(participantId: string, url: string) {
+    setLink({ participantId, url });
+    setCopied('');
+    try {
+      await navigator.clipboard.writeText(url);
+      setCopied(participantId);
+      setCopyNotice('Link copied.');
+    } catch {
+      setCopyNotice('Link is ready. Copy it from the field below.');
     }
   }
   async function copy(pid: string, rotate = false) {
     await action(async () => {
       const result = rotate ? await api.rotate(boardId, pid) : await api.link(boardId, pid);
-      await navigator.clipboard.writeText(result.url);
-      setCopied(pid);
+      await presentLink(pid, result.url);
     });
   }
   async function assign(event: FormEvent) {
@@ -69,8 +85,7 @@ export function SharePanel({
         expiry ? new Date(expiry).toISOString() : null,
       );
       const result = await api.link(boardId, row.id);
-      await navigator.clipboard.writeText(result.url);
-      setCopied(row.id);
+      await presentLink(row.id, result.url);
       setContactId('');
       setExpiry('');
       setRole('viewer');
@@ -94,6 +109,43 @@ export function SharePanel({
           {error}
         </p>
       )}
+      {link && (
+        <div className="mt-5 space-y-2">
+          <p role="status" className="text-sm text-muted">
+            {copyNotice}
+          </p>
+          <Field
+            label="Contact link"
+            value={link.url}
+            readOnly
+            onFocus={(event) => event.currentTarget.select()}
+          />
+          <SecondaryButton
+            disabled={busy}
+            onClick={() => void presentLink(link.participantId, link.url)}
+          >
+            <Copy size={15} /> Copy ready link
+          </SecondaryButton>
+        </div>
+      )}
+      {clientList.isPending && (
+        <p role="status" className="mt-4 text-sm text-muted">
+          Loading clients…
+        </p>
+      )}
+      {clientList.isError && (
+        <p role="alert" className="mt-4 text-sm text-danger">
+          Could not load clients.{' '}
+          <button className="min-h-11 underline" onClick={() => void clientList.refetch()}>
+            Try again
+          </button>
+        </p>
+      )}
+      {clientList.isSuccess && !clientList.data.length && (
+        <p className="mt-4 text-sm text-muted">
+          Create a client and contact in Manage clients before sharing.
+        </p>
+      )}
       {!clientId ? (
         <div className="mt-8">
           <p className="text-sm font-semibold">Choose the client for this board</p>
@@ -103,7 +155,9 @@ export function SharePanel({
               id="board-client"
               aria-label="Client"
               className="min-h-11 flex-1 border border-line bg-surface px-3"
-              defaultValue=""
+              value={selectedClient}
+              onChange={(event) => setSelectedClient(event.target.value)}
+              disabled={busy || !clientList.isSuccess || !clientList.data.length}
             >
               <option value="" disabled>
                 Select a client
@@ -115,14 +169,10 @@ export function SharePanel({
               ))}
             </select>
             <PrimaryButton
-              disabled={busy}
-              onClick={() => {
-                const selected = (document.getElementById('board-client') as HTMLSelectElement)
-                  .value;
-                if (selected) {
-                  action(() => api.updateBoard(boardId, { clientId: selected }));
-                }
-              }}
+              disabled={busy || !selectedClient || !clientList.isSuccess}
+              onClick={() =>
+                void action(() => api.updateBoard(boardId, { clientId: selectedClient }))
+              }
             >
               Associate
             </PrimaryButton>
@@ -145,11 +195,30 @@ export function SharePanel({
               Manage contacts
             </a>
           </div>
+          {contactList.isPending && (
+            <p role="status" className="mt-4 text-sm text-muted">
+              Loading contacts…
+            </p>
+          )}
+          {contactList.isError && (
+            <p role="alert" className="mt-4 text-sm text-danger">
+              Could not load contacts.{' '}
+              <button className="min-h-11 underline" onClick={() => void contactList.refetch()}>
+                Try again
+              </button>
+            </p>
+          )}
+          {contactList.isSuccess && !contactList.data.length && (
+            <p className="mt-4 text-sm text-muted">
+              Add a contact in Manage contacts before creating a link.
+            </p>
+          )}
           <form onSubmit={assign} className="mt-6 flex flex-col gap-3">
             <h3 className="text-base font-semibold">Invite a contact</h3>
             <select
               aria-label="Contact"
               required
+              disabled={busy || !contactList.isSuccess || !contactList.data.length}
               value={contactId}
               onChange={(e) => setContactId(e.target.value)}
               className="min-h-11 border border-line bg-surface px-3"
@@ -181,13 +250,21 @@ export function SharePanel({
               value={expiry}
               onChange={(e) => setExpiry(e.target.value)}
             />
-            <PrimaryButton disabled={busy || !contactId} type="submit">
+            <PrimaryButton disabled={busy || !contactId || !contactList.isSuccess} type="submit">
               <UserPlus size={16} /> Add and copy link
             </PrimaryButton>
           </form>
           <div className="mt-7">
             <h3 className="text-base font-semibold">People with access</h3>
             {people.isPending && <p className="mt-3 text-sm text-muted">Loading…</p>}
+            {people.isError && (
+              <p role="alert" className="mt-3 text-sm text-danger">
+                Could not load access.{' '}
+                <button className="min-h-11 underline" onClick={() => void people.refetch()}>
+                  Try again
+                </button>
+              </p>
+            )}
             {people.data
               ?.filter((p) => contactList.data?.some((c) => c.id === p.contactId))
               .map((p) => (
@@ -233,7 +310,14 @@ export function SharePanel({
                           <SecondaryButton
                             aria-label="Revoke access"
                             disabled={busy}
-                            onClick={() => action(() => api.revoke(boardId, p.id))}
+                            onClick={() =>
+                              action(async () => {
+                                await api.revoke(boardId, p.id);
+                                if (link?.participantId === p.id) {
+                                  setLink(null);
+                                }
+                              })
+                            }
                           >
                             <Trash2 size={15} />
                           </SecondaryButton>
@@ -292,9 +376,11 @@ export function SharePanel({
                   )}
                 </div>
               ))}
-            {people.data?.length === 0 && (
-              <p className="mt-3 text-sm text-muted">No client contacts yet.</p>
-            )}
+            {people.isSuccess &&
+              contactList.isSuccess &&
+              !people.data.some((person) =>
+                contactList.data.some((contact) => contact.id === person.contactId),
+              ) && <p className="mt-3 text-sm text-muted">No client contacts yet.</p>}
           </div>
         </>
       )}

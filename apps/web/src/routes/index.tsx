@@ -1,3 +1,4 @@
+import { InfoLinks } from '../components/BetaInfo';
 import { createFileRoute, Link, useNavigate } from '@tanstack/react-router';
 import { useEffect } from 'react';
 import { ArrowRight, ImagePlus, Link2, StickyNote } from 'lucide-react';
@@ -197,7 +198,7 @@ function Home() {
         </section>
         <footer className="flex flex-wrap items-center justify-between gap-4 border-t border-line py-7 text-xs text-muted">
           <Brand />
-          <span>A home for your ideas.</span>
+          <InfoLinks />
         </footer>
       </div>
     </main>

@@ -1,3 +1,4 @@
+import { InfoLinks } from '../components/BetaInfo';
 import { useState, type FormEvent } from 'react';
 import { createFileRoute, Link, useNavigate } from '@tanstack/react-router';
 import { ApiError, api } from '../lib/api';
@@ -60,7 +61,7 @@ function Login() {
         </h1>
         <p className="mt-3 text-sm leading-6 text-muted">
           {mode === 'signup'
-            ? 'Create an account to start collecting.'
+            ? 'Use your invited email to join the private beta.'
             : 'Sign in to pick up where you left off.'}
         </p>
         <form onSubmit={submit} className="mt-8 flex flex-col gap-4">
@@ -103,6 +104,9 @@ function Login() {
         >
           {mode === 'signup' ? 'I already have an account' : 'Create an account'}
         </SecondaryButton>
+        <div className="mt-5 border-t border-line pt-3">
+          <InfoLinks />
+        </div>
       </Panel>
     </main>
   );
