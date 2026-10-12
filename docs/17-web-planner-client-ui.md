@@ -145,3 +145,19 @@ test-only MinIO; the running application uses Cloudflare R2.
 
 [Web work unit 9](20-web-approvals.md) adds approver sharing, contextual client
 decisions, planner feedback, status filters and version-safe approval queries.
+
+## Private beta refinements
+
+Owners can rename boards from the gallery or editor. The shared dialog uses the
+existing board PATCH endpoint and refreshes board, gallery, and workspace-search
+caches. Personal boards do not show Share; business owners retain client sharing.
+Sharing handles loading, failed, and empty lists. Every newly issued link remains
+visible in a read-only selectable field even if clipboard access fails; copying
+that ready link never assigns a contact or rotates it again.
+
+Public `/help`, `/privacy`, and `/terms` routes explain capture, processing, trash,
+private-beta limitations, supported requests, and retained data. Links are visible
+from the landing page, login, gallery, and editor. `VITE_SUPPORT_EMAIL` can identify
+the monitored operator; until configured, help directs invitees to their invitation
+conversation. Operators must finalize deployment-specific privacy details before
+inviting users.

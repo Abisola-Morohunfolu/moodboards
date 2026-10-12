@@ -9,6 +9,7 @@ import {
 import { useQueryClient } from '@tanstack/react-query';
 import { Link, useNavigate } from '@tanstack/react-router';
 import {
+  HelpCircle,
   ArrowLeft,
   ArrowRight,
   ImagePlus,
@@ -30,6 +31,7 @@ import { ItemCard } from './ItemCard';
 import { ThemeToggle } from '../../components/Theme';
 import { TrashPanel } from './TrashPanel';
 import { SharePanel } from './SharePanel';
+import { RenameBoard } from './RenameBoard';
 import {
   ApprovalStatus,
   ApprovalFilters,
@@ -50,6 +52,8 @@ export function Editor({ boardId, targetItem }: { boardId: string; targetItem?: 
   const perform = useApiAction();
   const qc = useQueryClient();
   const detail = q.board(boardId);
+  const account = q.account();
+  const [renaming, setRenaming] = useState(false);
   const list = q.items(boardId);
   const [section, setSection] = useState<string | null>(null);
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -74,7 +78,13 @@ export function Editor({ boardId, targetItem }: { boardId: string; targetItem?: 
     list.isSuccess &&
     (detail.data.role === 'editor' || detail.data.role === 'owner');
   const capture = useCapture(boardId, editable);
-  const shareable = detail.data?.role === 'owner';
+  const owner = detail.data?.role === 'owner';
+  const shareable =
+    owner &&
+    account.data?.workspaces.some(
+      (workspace) =>
+        workspace.id === detail.data?.board.workspaceId && workspace.type === 'business',
+    );
   const approvalEnabled = !!detail.data?.board.clientId && editable;
   const approvals = q.approvals(boardId, approvalEnabled);
   const approvalSyncing =
@@ -559,11 +569,28 @@ export function Editor({ boardId, targetItem }: { boardId: string; targetItem?: 
           <h1 className="truncate text-base font-semibold" title={detail.data.board.title}>
             {detail.data.board.title}
           </h1>
+          {owner && (
+            <button
+              type="button"
+              aria-label="Rename board"
+              onClick={() => setRenaming(true)}
+              className="flex min-h-11 min-w-11 shrink-0 items-center justify-center rounded-lg hover:bg-cream"
+            >
+              <Pencil size={16} />
+            </button>
+          )}
           <span className="ml-2 hidden text-xs capitalize text-muted lg:block">
             {detail.data.role}
           </span>
         </div>
         <div className="flex items-center gap-2">
+          <Link
+            to="/help"
+            aria-label="Help and feedback"
+            className="flex min-h-11 min-w-11 items-center justify-center rounded-lg hover:bg-cream"
+          >
+            <HelpCircle size={18} />
+          </Link>
           <ThemeToggle />
           {editable && (
             <SecondaryButton aria-label="Open board trash" onClick={() => setTrashOpen(true)}>
@@ -934,7 +961,14 @@ export function Editor({ boardId, targetItem }: { boardId: string; targetItem?: 
           reveal={reveal}
         />
       )}
-      {share && (
+      {renaming && (
+        <RenameBoard
+          boardId={boardId}
+          title={detail.data.board.title}
+          onClose={() => setRenaming(false)}
+        />
+      )}
+      {share && shareable && (
         <SharePanel
           boardId={boardId}
           clientId={detail.data.board.clientId}

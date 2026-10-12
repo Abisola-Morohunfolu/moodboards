@@ -12,7 +12,10 @@ import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as BoardsRouteImport } from './routes/boards'
 import { Route as ClientsRouteImport } from './routes/clients'
+import { Route as HelpRouteImport } from './routes/help'
 import { Route as LoginRouteImport } from './routes/login'
+import { Route as PrivacyRouteImport } from './routes/privacy'
+import { Route as TermsRouteImport } from './routes/terms'
 import { Route as BoardsBoardIdRouteImport } from './routes/boards.$boardId'
 import { Route as ShareTokenRouteImport } from './routes/share.$token'
 import { Route as ClientBoardsBoardIdRouteImport } from './routes/client.boards.$boardId'
@@ -32,9 +35,24 @@ const ClientsRoute = ClientsRouteImport.update({
   path: '/clients',
   getParentRoute: () => rootRouteImport,
 } as any)
+const HelpRoute = HelpRouteImport.update({
+  id: '/help',
+  path: '/help',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const LoginRoute = LoginRouteImport.update({
   id: '/login',
   path: '/login',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const PrivacyRoute = PrivacyRouteImport.update({
+  id: '/privacy',
+  path: '/privacy',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const TermsRoute = TermsRouteImport.update({
+  id: '/terms',
+  path: '/terms',
   getParentRoute: () => rootRouteImport,
 } as any)
 const BoardsBoardIdRoute = BoardsBoardIdRouteImport.update({
@@ -57,7 +75,10 @@ export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/boards': typeof BoardsRouteWithChildren
   '/clients': typeof ClientsRoute
+  '/help': typeof HelpRoute
   '/login': typeof LoginRoute
+  '/privacy': typeof PrivacyRoute
+  '/terms': typeof TermsRoute
   '/boards/$boardId': typeof BoardsBoardIdRoute
   '/share/$token': typeof ShareTokenRoute
   '/client/boards/$boardId': typeof ClientBoardsBoardIdRoute
@@ -66,7 +87,10 @@ export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/boards': typeof BoardsRouteWithChildren
   '/clients': typeof ClientsRoute
+  '/help': typeof HelpRoute
   '/login': typeof LoginRoute
+  '/privacy': typeof PrivacyRoute
+  '/terms': typeof TermsRoute
   '/boards/$boardId': typeof BoardsBoardIdRoute
   '/share/$token': typeof ShareTokenRoute
   '/client/boards/$boardId': typeof ClientBoardsBoardIdRoute
@@ -76,7 +100,10 @@ export interface FileRoutesById {
   '/': typeof IndexRoute
   '/boards': typeof BoardsRouteWithChildren
   '/clients': typeof ClientsRoute
+  '/help': typeof HelpRoute
   '/login': typeof LoginRoute
+  '/privacy': typeof PrivacyRoute
+  '/terms': typeof TermsRoute
   '/boards/$boardId': typeof BoardsBoardIdRoute
   '/share/$token': typeof ShareTokenRoute
   '/client/boards/$boardId': typeof ClientBoardsBoardIdRoute
@@ -87,7 +114,10 @@ export interface FileRouteTypes {
     | '/'
     | '/boards'
     | '/clients'
+    | '/help'
     | '/login'
+    | '/privacy'
+    | '/terms'
     | '/boards/$boardId'
     | '/share/$token'
     | '/client/boards/$boardId'
@@ -96,7 +126,10 @@ export interface FileRouteTypes {
     | '/'
     | '/boards'
     | '/clients'
+    | '/help'
     | '/login'
+    | '/privacy'
+    | '/terms'
     | '/boards/$boardId'
     | '/share/$token'
     | '/client/boards/$boardId'
@@ -105,7 +138,10 @@ export interface FileRouteTypes {
     | '/'
     | '/boards'
     | '/clients'
+    | '/help'
     | '/login'
+    | '/privacy'
+    | '/terms'
     | '/boards/$boardId'
     | '/share/$token'
     | '/client/boards/$boardId'
@@ -115,7 +151,10 @@ export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   BoardsRoute: typeof BoardsRouteWithChildren
   ClientsRoute: typeof ClientsRoute
+  HelpRoute: typeof HelpRoute
   LoginRoute: typeof LoginRoute
+  PrivacyRoute: typeof PrivacyRoute
+  TermsRoute: typeof TermsRoute
   ShareTokenRoute: typeof ShareTokenRoute
   ClientBoardsBoardIdRoute: typeof ClientBoardsBoardIdRoute
 }
@@ -143,11 +182,32 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ClientsRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/help': {
+      id: '/help'
+      path: '/help'
+      fullPath: '/help'
+      preLoaderRoute: typeof HelpRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/login': {
       id: '/login'
       path: '/login'
       fullPath: '/login'
       preLoaderRoute: typeof LoginRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/privacy': {
+      id: '/privacy'
+      path: '/privacy'
+      fullPath: '/privacy'
+      preLoaderRoute: typeof PrivacyRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/terms': {
+      id: '/terms'
+      path: '/terms'
+      fullPath: '/terms'
+      preLoaderRoute: typeof TermsRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/boards/$boardId': {
@@ -189,7 +249,10 @@ const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   BoardsRoute: BoardsRouteWithChildren,
   ClientsRoute: ClientsRoute,
+  HelpRoute: HelpRoute,
   LoginRoute: LoginRoute,
+  PrivacyRoute: PrivacyRoute,
+  TermsRoute: TermsRoute,
   ShareTokenRoute: ShareTokenRoute,
   ClientBoardsBoardIdRoute: ClientBoardsBoardIdRoute,
 }
