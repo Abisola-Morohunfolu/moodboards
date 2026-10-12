@@ -243,3 +243,7 @@ identity-checked password replacement via stdin and atomically revokes all accou
 sessions. See [operator procedures](24-private-beta-operations.md) for identity
 checks, commands, support logging, and supported deletion requests. This does not
 provide self-service password reset or email verification.
+
+Password login now locks and rechecks credentials after password verification.
+A support reset that finishes during verification cannot be followed by a fresh
+session authenticated with the replaced password.

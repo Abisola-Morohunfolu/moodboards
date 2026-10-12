@@ -82,6 +82,44 @@ describe('Atomic account onboarding and shared auth state', () => {
       auth.login({ ...input, password: 'replacement password for beta' }),
     ).resolves.toHaveProperty('token');
   });
+  it('does not issue an old-password session when recovery finishes during verification', async () => {
+    const signed = await auth.signup(input);
+    const replacement = await passwords.hash('replacement password for beta');
+    const originalVerify = passwords.verify.bind(passwords);
+    let verified!: () => void;
+    let resume!: () => void;
+    const reached = new Promise<void>((resolve) => {
+      verified = resolve;
+    });
+    const resumed = new Promise<void>((resolve) => {
+      resume = resolve;
+    });
+    jest.spyOn(passwords, 'verify').mockImplementation(async (password, hash) => {
+      const valid = await originalVerify(password, hash);
+      verified();
+      await resumed;
+      return valid;
+    });
+    const login = auth.login(input);
+    await reached;
+    try {
+      await source.transaction(async (manager) => {
+        await manager.query('update users set password_hash = $1 where id = $2', [
+          replacement,
+          signed.account.user.id,
+        ]);
+        await manager.query('delete from auth_sessions where user_id = $1', [
+          signed.account.user.id,
+        ]);
+      });
+    } finally {
+      resume();
+    }
+    await expect(login).rejects.toThrow('Invalid email or password');
+    expect(await source.query('select count(*)::int as count from auth_sessions')).toEqual([
+      { count: 0 },
+    ]);
+  });
   it('rolls back the entire signup when session creation fails', async () => {
     jest.spyOn(sessions, 'create').mockRejectedValueOnce(new Error('injected failure'));
     await expect(auth.signup(input)).rejects.toThrow('injected failure');

@@ -47,7 +47,15 @@ export class AuthService {
     if (!user || !valid || user.deletedAt) {
       throw new UnauthorizedException('Invalid email or password');
     }
-    return withTransaction(this.source, (manager) => this.signIn(manager, user.id));
+    return withTransaction(this.source, async (manager) => {
+      // A support reset may finish while the expensive verification is in flight.
+      // Lock and recheck before issuing a session, using the reset's same user lock.
+      const current = await this.auth.credentials(input.email, manager, true);
+      if (!current || current.deletedAt || current.passwordHash !== user.passwordHash) {
+        throw new UnauthorizedException('Invalid email or password');
+      }
+      return this.signIn(manager, current.id);
+    });
   }
   async google(identity: GoogleIdentity): Promise<{ account: AccountResponse; token: string }> {
     try {

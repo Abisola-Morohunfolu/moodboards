@@ -18,6 +18,7 @@ async function main(): Promise<void> {
     );
   }
   const email = z.email().parse(rawEmail).trim().toLowerCase();
+  process.stdin.setEncoding('utf8');
   let password = '';
   for await (const chunk of process.stdin) {
     password += String(chunk);

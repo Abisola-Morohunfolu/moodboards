@@ -3,9 +3,11 @@ on:
   push:
     branches:
       - 'master'
+      - 'codex/private-beta-*'
   pull_request:
     branches:
       - 'master'
+      - 'codex/private-beta-*'
 permissions:
   contents: read
 jobs:
@@ -47,3 +49,11 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - run: docker compose -f compose.test.yaml up -d --wait --build minio
       - run: pnpm check
+      - run: pnpm exec playwright install --with-deps chromium firefox webkit
+      - run: pnpm test:browser
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: browser-failure-evidence
+          path: test-results/
+          retention-days: 7
